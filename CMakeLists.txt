@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.13)
 project(ti)
 set(CMAKE_CXX_STANDARD 14)
 
-set(APP_SRC src/main.cpp)
+set(APP_SRC "${CMAKE_CURRENT_SOURCE_DIR}/src/main.cpp")
 
 add_executable(ti ${APP_SRC})
 include_directories("${CMAKE_CURRENT_SOURCE_DIR}/include") 
