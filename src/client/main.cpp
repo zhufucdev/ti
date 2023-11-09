@@ -1,8 +1,9 @@
 #include <iostream>
-#include <im.h>
+#include <ti.hpp>
 
 int main (int argc, char *argv[]) {
-    std::cout<<"TI - The IM client version "<<TI::Version<<std::endl;
+    std::cout<<"TI - The IM client version "<<ti::Version<<std::endl;
+    
     return 0;
 }
 

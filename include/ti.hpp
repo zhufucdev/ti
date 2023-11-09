@@ -1,5 +1,7 @@
 #include <iostream>
 
-namespace TI {
+
+namespace ti {
     const std::string Version = "0.1";
+    
 }
