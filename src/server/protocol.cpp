@@ -3,7 +3,7 @@
 using namespace ti::server;
 
 void Client::initialize(SendFn fn) { sendfn = std::move(fn); }
-void Client::send(char *content, int len) const { sendfn(content, len); }
+void Client::send(char *content, size_t len) const { sendfn(content, len); }
 
 Server::Server(std::string addr, short port)
     : addr(std::move(addr)), port(port), running(false) {}
@@ -117,7 +117,7 @@ void Server::handleconn(sockaddr_in addr, int clientfd) {
     }).detach();
 }
 
-void Server::send(int clientfd, char *data, int len) {
+void Server::send(int clientfd, char *data, size_t len) {
     ::send(clientfd, data, len, 0);
 }
 

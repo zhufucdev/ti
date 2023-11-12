@@ -20,7 +20,7 @@ class TiClient : public Client {
     ~TiClient() override;
     void on_connect(sockaddr_in addr) override;
     void on_disconnect() override;
-    void on_message(char *content, int len) override;
+    void on_message(char *content, size_t len) override;
 };
 } // namespace server
 } // namespace ti

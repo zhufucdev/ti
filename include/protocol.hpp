@@ -26,18 +26,18 @@
 namespace ti {
 const std::string version = "0.1";
 
-class Sender {
+class Entity {
   public:
     virtual std::string get_id() = 0;
 };
 
-class Server : Sender {
+class Server : Entity {
   public:
     std::string get_id() override;
     Server();
 };
 
-class User : Sender {
+class User : Entity {
     std::string name, id;
   public:
     User(std::string id, std::string name);

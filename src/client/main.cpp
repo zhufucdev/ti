@@ -1,4 +1,4 @@
-#include <client/ti.hpp>
+#include <client/protocol.hpp>
 
 int main (int argc, char *argv[]) {
     std::cout<<"TI - The IM client version "<<ti::version<<std::endl;

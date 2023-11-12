@@ -1,4 +1,4 @@
-#include <client/ti.hpp>
+#include <client/protocol.hpp>
 
 using namespace ti::client;
 
@@ -20,17 +20,4 @@ void Client::close() {
 }
 void Client::send(const void *data, size_t len) {
     ::send(socketfd, data, len, 0);
-}
-
-TiClient::TiClient(std::string addr, short port, std::string dbfile)
-    : Client(addr, port) {
-    int n = sqlite3_open(dbfile.c_str(), &dbhandle);
-    if (n != SQLITE_OK) {
-        throw std::runtime_error("Failed to load database");
-    }
-}
-TiClient::~TiClient() { sqlite3_close(dbhandle); }
-VerificationResult TiClient::user_login(std::string name,
-                                        std::string password) {
-
 }

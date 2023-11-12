@@ -21,5 +21,5 @@ void TiClient::on_connect(sockaddr_in addr) {
     std::cout << "connected to " << inet_ntoa(addr.sin_addr) << " as " << id
               << std::endl;
 }
-void TiClient::on_message(char *content, int len) { send(content, len); }
+void TiClient::on_message(char *content, size_t len) { send(content, len); }
 void TiClient::on_disconnect() { std::cout << id << " disconnected" << std::endl; }
