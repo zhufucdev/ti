@@ -1,8 +1,10 @@
-#include <iostream>
-#include <server/ti.hpp>
 #include <csignal>
+#include <iostream>
+#include <server/behavior.hpp>
 
-static ti::TiServer *server;
+using ti::server::TiServer;
+
+static TiServer *server;
 
 void interrupt(int param);
 
@@ -11,9 +13,10 @@ int main(int argc, char const *argv[]) {
     
     signal(SIGINT, interrupt);
 
-    server = new ti::TiServer("0.0.0.0", 6789);
+    server = new TiServer("0.0.0.0", 6789, "ti_server.db");
     std::cout<<"listen on "<<server->get_addr()<<":"<<server->get_port()<<std::endl;
     server->start();
+    delete server;
     return 0;
 }
 
