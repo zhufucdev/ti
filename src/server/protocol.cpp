@@ -80,44 +80,48 @@ void Server::handleconn(sockaddr_in addr, int clientfd) {
         });
         handler->on_connect(addr);
 
-        char t;
-        char *buf = (char *)calloc(BUFFER_SIZE, sizeof(char));
-        int cap = BUFFER_SIZE, top = 0, n;
+        char *tsize = (char *)calloc(BYTES_LEN_HEADER, sizeof(char)),
+             *buff = nullptr;
+        size_t msize;
 
         while (true) {
-            while ((n = recv(clientfd, &t, 1, 0)) > 0) {
-                buf[top++] = t;
-                if (top >= cap) {
-                    cap += BUFFER_SIZE;
-                    buf = (char *)realloc(buf, sizeof(char) * cap);
-                    if (!buf) {
-                        throw std::overflow_error("realloc failed");
-                    }
-                }
-
-                if (t == '\0') {
-                    // end of message
-                    break;
-                }
-            }
+            int n = recv(clientfd, tsize, BYTES_LEN_HEADER * sizeof(char), 0);
             if (n <= 0) {
                 break;
             }
-
-            handler->on_message(buf, top);
-            free(buf);
-            buf = (char *)calloc(BUFFER_SIZE, sizeof(char));
-            top = 0;
+            n = 0;
+            msize = 0;
+            while (n < BYTES_LEN_HEADER) {
+                msize <<= sizeof(char);
+                msize |= tsize[n++];
+            }
+            buff = (char *)malloc(msize);
+            n = recv(clientfd, buff, msize, 0);
+            std::cout<<n<<std::endl;
+            if (n <= 0) {
+                break;
+            }
+            handler->on_message(buff, msize);
         }
 
         closesocketfd(clientfd);
         handler->on_disconnect();
         delete handler;
-        free(buf);
+        delete tsize;
+        if (buff) {
+            delete buff;
+        }
     }).detach();
 }
 
 void Server::send(int clientfd, char *data, size_t len) {
+    char *tsize = (char *)calloc(BYTES_LEN_HEADER, sizeof(char));
+    int n = 0;
+    while (n < BYTES_LEN_HEADER) {
+        tsize[n] |= len >> (BYTES_LEN_HEADER - n);
+        n++;
+    }
+    ::send(clientfd, tsize, sizeof(char) * BYTES_LEN_HEADER, 0);
     ::send(clientfd, data, len, 0);
 }
 

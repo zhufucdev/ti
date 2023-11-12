@@ -11,10 +11,10 @@ class Client {
   public:
     Client(std::string addr, short port);
     ~Client();
-    void connect();
-    void close();
+    void start();
+    void stop();
     void send(const void *data, size_t len);
-    virtual void on_message()
+    virtual void on_message() = 0;
 };
 
 

@@ -1,7 +1,6 @@
 #include "../protocol.hpp"
 #include "sqlite3.h"
 
-#define BUFFER_SIZE 512
 #define SendFn std::function<void(char *, size_t)>
 
 namespace ti {
