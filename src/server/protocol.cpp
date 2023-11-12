@@ -18,19 +18,19 @@ void Server::start() {
 #ifdef _WIN32
     WSADATA wsaData;
     if (WSAStartup(MAKEWORD(2, 2), &wsaData) != 0) {
-        throw std::runtime_error("Failed to initialize winsock");
+        throw std::runtime_error("failed to initialize winsock");
     }
     socketfd = socket(AF_INET, SOCK_STREAM, 0);
     if (socketfd == INVALID_SOCKET) {
         WSACleanup();
-        throw std::runtime_error("Failed to create socket");
+        throw std::runtime_error("failed to create socket");
     }
     sockaddr_in servaddr;
     ZeroMemory(&servaddr, sizeof(servaddr));
 #else
     socketfd = socket(AF_INET, SOCK_STREAM, IPPROTO_IP);
     if (socketfd < 0) {
-        throw std::runtime_error("Failed to create socket");
+        throw std::runtime_error("failed to create socket");
     }
     sockaddr_in servaddr;
     std::memset(&servaddr, 0, sizeof servaddr);
@@ -39,13 +39,13 @@ void Server::start() {
     servaddr.sin_family = AF_INET;
     servaddr.sin_port = htons(port);
     if (inet_pton(AF_INET, addr.c_str(), &servaddr.sin_addr) <= 0) {
-        throw std::runtime_error("Invalid address");
+        throw std::runtime_error("invalid address");
     }
     if (bind(socketfd, (struct sockaddr *)&servaddr, sizeof servaddr) < 0) {
-        throw std::runtime_error("Failed to bind");
+        throw std::runtime_error("failed to bind");
     }
     if (listen(socketfd, 10) < 0) {
-        throw std::runtime_error("Failed to listen");
+        throw std::runtime_error("failed to listen");
     }
 
     running = true;
@@ -66,7 +66,7 @@ void Server::start() {
 
 void Server::stop() {
     if (!running) {
-        throw std::runtime_error("The server is currently not running");
+        throw std::runtime_error("the server is currently not running");
     }
     running = false;
     closesocketfd(socketfd);
@@ -89,15 +89,9 @@ void Server::handleconn(sockaddr_in addr, int clientfd) {
             if (n <= 0) {
                 break;
             }
-            n = 0;
-            msize = 0;
-            while (n < BYTES_LEN_HEADER) {
-                msize <<= sizeof(char);
-                msize |= tsize[n++];
-            }
+            msize = read_len_header(tsize);
             buff = (char *)malloc(msize);
             n = recv(clientfd, buff, msize, 0);
-            std::cout<<n<<std::endl;
             if (n <= 0) {
                 break;
             }
@@ -108,19 +102,12 @@ void Server::handleconn(sockaddr_in addr, int clientfd) {
         handler->on_disconnect();
         delete handler;
         delete tsize;
-        if (buff) {
-            delete buff;
-        }
+        delete buff;
     }).detach();
 }
 
 void Server::send(int clientfd, char *data, size_t len) {
-    char *tsize = (char *)calloc(BYTES_LEN_HEADER, sizeof(char));
-    int n = 0;
-    while (n < BYTES_LEN_HEADER) {
-        tsize[n] |= len >> (BYTES_LEN_HEADER - n);
-        n++;
-    }
+    char *tsize = write_len_header(len);
     ::send(clientfd, tsize, sizeof(char) * BYTES_LEN_HEADER, 0);
     ::send(clientfd, data, len, 0);
 }
@@ -128,3 +115,5 @@ void Server::send(int clientfd, char *data, size_t len) {
 std::string Server::get_addr() { return addr; }
 
 short Server::get_port() { return port; }
+
+bool Server::is_running() const { return running; }

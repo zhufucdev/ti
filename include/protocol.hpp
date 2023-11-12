@@ -28,6 +28,9 @@
 namespace ti {
 const std::string version = "0.1";
 
+char *write_len_header(size_t len);
+size_t read_len_header(char *tsize);
+
 class Entity {
   public:
     virtual std::string get_id() = 0;
@@ -55,13 +58,13 @@ class Frame {
     virtual std::string get_id() = 0;
 };
 
-class Text : Frame {
+class TextFrame : Frame {
     std::string content;
     std::string id;
 
   public:
-    Text(std::string id, std::string content);
-    explicit Text(std::string content);
+    TextFrame(std::string id, std::string content);
+    explicit TextFrame(std::string content);
     std::string get_id() override;
     std::string to_string() override;
 };

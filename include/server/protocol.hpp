@@ -32,6 +32,7 @@ class Server {
     void stop();
     std::string get_addr();
     short get_port();
+    bool is_running() const;
 };
 } // namespace server
 } // namespace ti

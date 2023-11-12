@@ -21,6 +21,9 @@ class TiClient : public Client {
     std::vector<Entity *> get_contacts();
     Entity *get_entity(std::string id);
     void send(Message *message);
+    void on_connect(sockaddr_in serveraddr) override;
+    void on_message(char *data, size_t len) override;
+    void on_close() override;
 };
 } // namespace client
 } // namespace ti

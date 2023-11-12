@@ -1,3 +1,4 @@
+#include <log.hpp>
 #include <server/behavior.hpp>
 
 using namespace ti::server;
@@ -14,12 +15,23 @@ Client *TiServer::on_connect(sockaddr_in addr) {
     return new TiClient(dbhandle);
 }
 
+enum RequestType {
+    LOGIN = 0x00,
+};
+
 TiClient::TiClient(sqlite3 *dbhandle)
     : dbhandle(dbhandle), id(nanoid::generate()) {}
-TiClient::~TiClient() {}
+TiClient::~TiClient() = default;
 void TiClient::on_connect(sockaddr_in addr) {
-    std::cout << "connected to " << inet_ntoa(addr.sin_addr) << " as " << id
-              << std::endl;
+    logD("Connected to %s as %s", inet_ntoa(addr.sin_addr), id.c_str());
 }
-void TiClient::on_message(char *content, size_t len) { send(content, len); }
-void TiClient::on_disconnect() { std::cout << id << " disconnected" << std::endl; }
+void TiClient::on_message(char *content, size_t len) {
+    auto req_t = (RequestType)content[0];
+    switch (req_t) {
+    case LOGIN:
+
+        break;
+    }
+    send(content, len);
+}
+void TiClient::on_disconnect() { logD("%s disconnected", id.c_str()); }

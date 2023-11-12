@@ -7,6 +7,7 @@ class Client {
     std::string addr;
     short port;
     SocketFd socketfd;
+    bool running;
 
   public:
     Client(std::string addr, short port);
@@ -14,9 +15,10 @@ class Client {
     void start();
     void stop();
     void send(const void *data, size_t len);
-    virtual void on_message() = 0;
+    bool is_running() const;
+    virtual void on_connect(sockaddr_in serveraddr) = 0;
+    virtual void on_message(char *data, size_t len) = 0;
+    virtual void on_close() = 0;
 };
-
-
 } // namespace client
 } // namespace ti
