@@ -1,5 +1,4 @@
 #include "../protocol.hpp"
-#include "sqlite3.h"
 
 namespace ti {
 namespace client {

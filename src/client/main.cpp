@@ -8,10 +8,11 @@ static TiClient *client;
 void interrupt(int param);
 
 int main(int argc, char *argv[]) {
-    signal(SIGINT, interrupt);
-
     std::cout << "TI - The IM client version " << ti::version << std::endl;
     logD("Running a debugging version");
+
+    signal(SIGINT, interrupt);
+    ti::orm::SqlHelper::initialize();
 
     client = new TiClient("127.0.0.1", 6789, "ti_client.db");
     client->start();
@@ -30,6 +31,7 @@ int main(int argc, char *argv[]) {
         client->stop();
     }
     delete client;
+    ti::orm::SqlHelper::shutdown();
     return 0;
 }
 

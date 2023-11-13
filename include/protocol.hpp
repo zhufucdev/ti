@@ -79,4 +79,8 @@ class Message {
     std::vector<Frame *> get_content();
     std::string get_id();
 };
+
+enum RequestType {
+    LOGIN = 0x00,
+};
 } // namespace ti

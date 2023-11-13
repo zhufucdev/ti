@@ -1,5 +1,4 @@
 #include "protocol.hpp"
-#include "sqlite3.h"
 
 namespace ti {
 namespace server {
@@ -20,7 +19,7 @@ class TiClient : public Client {
     ~TiClient() override;
     void on_connect(sockaddr_in addr) override;
     void on_disconnect() override;
-    void on_message(char *content, size_t len) override;
+    void on_message(char *data, size_t len) override;
 };
 } // namespace server
 } // namespace ti

@@ -1,4 +1,5 @@
 #include "protocol.hpp"
+#include "orm.h"
 
 namespace ti {
 namespace client {

@@ -15,9 +15,23 @@ Client *TiServer::on_connect(sockaddr_in addr) {
     return new TiClient(dbhandle);
 }
 
-enum RequestType {
-    LOGIN = 0x00,
-};
+std::vector<std::string> read_message_body(const char *data, size_t len) {
+    int i = 1, j = 1;
+    std::vector<std::string> heap;
+    while (i < len) {
+        if (data[i] == '\0') {
+            std::string substr(data + j, i - j);
+            heap.push_back(substr);
+            j = i + 1;
+        }
+        i++;
+    }
+    if (j != i) {
+        std::string substr(data + j, len);
+        heap.push_back(substr);
+    }
+    return heap;
+}
 
 TiClient::TiClient(sqlite3 *dbhandle)
     : dbhandle(dbhandle), id(nanoid::generate()) {}
@@ -25,13 +39,16 @@ TiClient::~TiClient() = default;
 void TiClient::on_connect(sockaddr_in addr) {
     logD("Connected to %s as %s", inet_ntoa(addr.sin_addr), id.c_str());
 }
-void TiClient::on_message(char *content, size_t len) {
-    auto req_t = (RequestType)content[0];
+void TiClient::on_message(char *data, size_t len) {
+    auto req_t = (RequestType)data[0];
+    auto body = read_message_body(data, len);
     switch (req_t) {
     case LOGIN:
-
+        char *err;
+        sqlite3_exec(dbhandle, "", nullptr, nullptr, &err);
         break;
     }
-    send(content, len);
+    send(data, len);
 }
+
 void TiClient::on_disconnect() { logD("%s disconnected", id.c_str()); }

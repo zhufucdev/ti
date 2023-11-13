@@ -14,11 +14,13 @@ int main(int argc, char const *argv[]) {
     logD("Running a debug version");
 
     signal(SIGINT, interrupt);
+    ti::orm::SqlHelper::initialize();
 
     server = new TiServer("0.0.0.0", 6789, "ti_server.db");
     std::cout<<"Listen on "<<server->get_addr()<<":"<<server->get_port()<<std::endl;
     server->start();
     delete server;
+    ti::orm::SqlHelper::shutdown();
     return 0;
 }
 
