@@ -3,17 +3,11 @@
 
 using namespace ti::server;
 
-TiServer::TiServer(std::string addr, short port, std::string dbfile)
-    : Server(std::move(addr), port) {
-    int n = sqlite3_open(dbfile.c_str(), &dbhandle);
-    if (n != SQLITE_OK) {
-        throw std::runtime_error("Failed to open database");
-    }
-}
-TiServer::~TiServer() { sqlite3_close(dbhandle); }
-Client *TiServer::on_connect(sockaddr_in addr) {
-    return new TiClient(dbhandle);
-}
+TiServer::TiServer(std::string addr, short port,
+                   std::string dbfile)
+    : Server(std::move(addr), port), db(dbfile) {}
+TiServer::~TiServer() = default;
+Client *TiServer::on_connect(sockaddr_in addr) { return new TiClient(db); }
 
 std::vector<std::string> read_message_body(const char *data, size_t len) {
     int i = 1, j = 1;
@@ -33,8 +27,7 @@ std::vector<std::string> read_message_body(const char *data, size_t len) {
     return heap;
 }
 
-TiClient::TiClient(sqlite3 *dbhandle)
-    : dbhandle(dbhandle), id(nanoid::generate()) {}
+TiClient::TiClient(const orm::TiOrm &db) : db(db) {}
 TiClient::~TiClient() = default;
 void TiClient::on_connect(sockaddr_in addr) {
     logD("Connected to %s as %s", inet_ntoa(addr.sin_addr), id.c_str());
@@ -44,8 +37,7 @@ void TiClient::on_message(char *data, size_t len) {
     auto body = read_message_body(data, len);
     switch (req_t) {
     case LOGIN:
-        char *err;
-        sqlite3_exec(dbhandle, "", nullptr, nullptr, &err);
+
         break;
     }
     send(data, len);

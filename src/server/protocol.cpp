@@ -114,6 +114,6 @@ void Server::send(int clientfd, char *data, size_t len) {
 
 std::string Server::get_addr() { return addr; }
 
-short Server::get_port() { return port; }
+short Server::get_port() const { return port; }
 
 bool Server::is_running() const { return running; }

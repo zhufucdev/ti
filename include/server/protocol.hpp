@@ -1,5 +1,4 @@
 #include "../protocol.hpp"
-#include "orm.h"
 
 #define SendFn std::function<void(char *, size_t)>
 
@@ -31,7 +30,7 @@ class Server {
     void start();
     void stop();
     std::string get_addr();
-    short get_port();
+    short get_port() const;
     bool is_running() const;
 };
 } // namespace server

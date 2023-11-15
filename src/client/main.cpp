@@ -12,7 +12,7 @@ int main(int argc, char *argv[]) {
     logD("Running a debugging version");
 
     signal(SIGINT, interrupt);
-    ti::orm::SqlHelper::initialize();
+    ti::orm::SqlDatabase::initialize();
 
     client = new TiClient("127.0.0.1", 6789, "ti_client.db");
     client->start();
@@ -31,7 +31,7 @@ int main(int argc, char *argv[]) {
         client->stop();
     }
     delete client;
-    ti::orm::SqlHelper::shutdown();
+    ti::orm::SqlDatabase::shutdown();
     return 0;
 }
 
