@@ -233,36 +233,7 @@ SqlTransaction *SqlDatabase::prepare(const std::string &expr) {
 void SqlDatabase::initialize() { sqlite3_initialize(); }
 void SqlDatabase::shutdown() { sqlite3_shutdown(); }
 
-static std::string init_sql() {
-    return "CREATE TABLE IF NOT EXISTS \"user\"\n"
-           "(\n    id   varchar(21) primary key not null,\n"
-           "    name varchar                 not null\n"
-           ");\n"
-           "CREATE TABLE IF NOT EXISTS \"group\"\n"
-           "(\n"
-           "    id         varchar(21) primary key not null,\n"
-           "    name       varchar                 not null,\n"
-           "    members_id varchar                 not null\n"
-           ");\n"
-           "CREATE TABLE IF NOT EXISTS \"text_frame\"\n"
-           "(\n"
-           "    id      varchar(21) primary key not null,\n"
-           "    content varchar                 not null\n"
-           ");\n"
-           "CREATE TABLE IF NOT EXISTS \"message\"\n"
-           "(\n"
-           "    id           varchar(21) primary key not null,\n"
-           "    frames_id    varchar                 not null,\n"
-           "    time         datetime                not null,\n"
-           "    sender_id    varchar(21)             not null,\n"
-           "    receiver_id  varchar(21)             not null,\n    "
-           "    forwarded_id varchar(21)             not null\n"
-           ");\n"
-           "";
-}
 TiOrm::TiOrm(const ti::orm::TiOrm &t) : SqlDatabase(t) {
-    logD("[orm (copied)] executing initializing SQL");
-    exec_sql_no_result(init_sql());
     entities = t.entities;
     frames = t.frames;
     messages = t.messages;
@@ -292,7 +263,32 @@ std::vector<T> maps(const std::string &str, const char separator,
 }
 TiOrm::TiOrm(const std::string &dbfile) : SqlDatabase(dbfile) {
     logD("[orm] executing initializing SQL");
-    exec_sql_no_result(init_sql());
+    exec_sql_no_result(
+        "CREATE TABLE IF NOT EXISTS \"user\"\n"
+        "(\n    id   varchar(21) primary key not null,\n"
+        "    name varchar                 not null\n"
+        ");\n"
+        "CREATE TABLE IF NOT EXISTS \"group\"\n"
+        "(\n"
+        "    id         varchar(21) primary key not null,\n"
+        "    name       varchar                 not null,\n"
+        "    members_id varchar                 not null\n"
+        ");\n"
+        "CREATE TABLE IF NOT EXISTS \"text_frame\"\n"
+        "(\n"
+        "    id      varchar(21) primary key not null,\n"
+        "    content varchar                 not null\n"
+        ");\n"
+        "CREATE TABLE IF NOT EXISTS \"message\"\n"
+        "(\n"
+        "    id           varchar(21) primary key not null,\n"
+        "    frames_id    varchar                 not null,\n"
+        "    time         datetime                not null,\n"
+        "    sender_id    varchar(21)             not null,\n"
+        "    receiver_id  varchar(21)             not null,\n    "
+        "    forwarded_id varchar(21)             not null\n"
+        ");\n"
+        "");
     auto t = exec_sql("SELECT * FROM \"user\"");
     for (int i = 0; i < t->height; ++i) {
         auto row = t->rows[i];
@@ -349,4 +345,3 @@ const Entity *TiOrm::get_entity(const std::string &id) const {
     return nullptr;
 }
 const std::vector<Message *> &TiOrm::get_messages() const { return messages; }
-
