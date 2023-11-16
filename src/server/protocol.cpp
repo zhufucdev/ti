@@ -85,7 +85,7 @@ void Server::handleconn(sockaddr_in addr, int clientfd) {
         size_t msize;
 
         while (true) {
-            int n = recv(clientfd, tsize, BYTES_LEN_HEADER * sizeof(char), 0);
+            ssize_t n = recv(clientfd, tsize, BYTES_LEN_HEADER * sizeof(char), 0);
             if (n <= 0) {
                 break;
             }
@@ -112,7 +112,7 @@ void Server::send(int clientfd, char *data, size_t len) {
     ::send(clientfd, data, len, 0);
 }
 
-std::string Server::get_addr() { return addr; }
+std::string Server::get_addr() const { return addr; }
 
 short Server::get_port() const { return port; }
 

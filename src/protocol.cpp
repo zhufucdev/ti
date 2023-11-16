@@ -26,24 +26,28 @@ size_t ti::read_len_header(char *tsize) {
     return msize;
 }
 
+bool Entity::operator==(ti::Entity &other) const {
+    return other.get_id() == get_id();
+}
+
 Server::Server() = default;
-std::string Server::get_id() { return "zGuEzyj3EUyeSKAvHw3Zo"; }
+std::string Server::get_id() const { return "zGuEzyj3EUyeSKAvHw3Zo"; }
 
 User::User(std::string id, std::string name)
     : id(std::move(id)), name(std::move(name)) {}
-std::string User::get_id() { return id; }
+std::string User::get_id() const { return id; }
 std::string User::get_name() { return name; }
 
 Group::Group(std::string id, std::string name, std::vector<Entity *> members)
     : id(std::move(id)), name(std::move(name)), members(std::move(members)) {}
 std::string Group::get_name() { return name; }
-std::string Group::get_id() { return id; }
+std::string Group::get_id() const { return id; }
 std::vector<Entity *> &Group::get_members() { return members; }
 
 TextFrame::TextFrame(std::string id, std::string content)
     : id(std::move(id)), content(std::move(content)) {}
-std::string TextFrame::get_id() { return id; }
-std::string TextFrame::to_string() { return content; }
+std::string TextFrame::get_id() const { return id; }
+std::string TextFrame::to_string() const { return content; }
 
 Message::Message(std::string id, std::vector<Frame *> content, std::time_t time,
                  ti::Entity *sender, ti::Entity *receiver,
@@ -125,15 +129,19 @@ SqlTransaction::RowIterator::operator*() {
 }
 
 Row::Row(sqlite3_stmt *handle) : handle(handle) {}
-std::string Row::get_name(int col) { return sqlite3_column_name(handle, col); }
-int Row::get_blob(int col, const void **rec) {
+std::string Row::get_name(int col) const {
+    return sqlite3_column_name(handle, col);
+}
+int Row::get_blob(int col, const void **rec) const {
     *rec = sqlite3_column_blob(handle, col);
     return sqlite3_column_bytes(handle, col);
 }
-double Row::get_double(int col) { return sqlite3_column_double(handle, col); }
-int Row::get_int(int col) { return sqlite3_column_int(handle, col); }
-long Row::get_int64(int col) { return sqlite3_column_int64(handle, col); }
-int Row::get_type(int col) { return sqlite3_column_type(handle, col); }
+double Row::get_double(int col) const {
+    return sqlite3_column_double(handle, col);
+}
+int Row::get_int(int col) const { return sqlite3_column_int(handle, col); }
+long Row::get_int64(int col) const { return sqlite3_column_int64(handle, col); }
+int Row::get_type(int col) const { return sqlite3_column_type(handle, col); }
 std::string Row::get_text(int col) {
     const unsigned char *s = sqlite3_column_text(handle, col);
     return reinterpret_cast<const char *>(s);
@@ -227,8 +235,8 @@ void SqlDatabase::shutdown() { sqlite3_shutdown(); }
 
 Contact::Contact(User *owner, Entity *contact)
     : owner(owner), contact(contact) {}
-Entity *Contact::get_contact() { return contact; }
-Entity *Contact::get_owner() { return owner; }
+Entity *Contact::get_contact() const { return contact; }
+Entity *Contact::get_owner() const { return owner; }
 
 static std::string init_sql() {
     return "CREATE TABLE IF NOT EXISTS \"user\"\n"
@@ -328,7 +336,7 @@ TiOrm::TiOrm(const std::string &dbfile) : SqlDatabase(dbfile) {
     delete transaction;
 }
 TiOrm::~TiOrm() = default;
-const std::vector<User *> TiOrm::get_users() {
+std::vector<User *> TiOrm::get_users() const {
     std::vector<User *> users;
     for (auto e : entities) {
         if (User *u = dynamic_cast<User *>(e)) {
@@ -337,7 +345,7 @@ const std::vector<User *> TiOrm::get_users() {
     }
     return users;
 }
-const Entity *TiOrm::get_entity(const std::string &id) {
+const Entity *TiOrm::get_entity(const std::string &id) const {
     for (auto e : entities) {
         if (e->get_id() == id) {
             return e;
@@ -345,4 +353,16 @@ const Entity *TiOrm::get_entity(const std::string &id) {
     }
     return nullptr;
 }
-const std::vector<Message *> &TiOrm::get_messages() { return messages; }
+const std::vector<Message *> &TiOrm::get_messages() const { return messages; }
+
+ServerOrm::ServerOrm(const std::string &dbfile) : TiOrm(dbfile) {}
+const std::vector<Contact *> &ServerOrm::get_contacts() { return contacts; }
+std::vector<Entity *> ServerOrm::get_contacts(User *owner) {
+    std::vector<Entity *> ev;
+    for (auto e : contacts) {
+        if (e->get_owner() == owner) {
+            ev.push_back(e->get_contact());
+        }
+    }
+    return ev;
+}

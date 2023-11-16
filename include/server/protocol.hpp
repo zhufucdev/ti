@@ -25,11 +25,11 @@ class Server {
   public:
     Server(std::string addr, short port);
     ~Server();
-    void send(SocketFd clientfd, char *data, size_t len);
+    static void send(SocketFd clientfd, char *data, size_t len);
     virtual Client *on_connect(sockaddr_in addr) = 0;
     void start();
     void stop();
-    std::string get_addr();
+    std::string get_addr() const;
     short get_port() const;
     bool is_running() const;
 };

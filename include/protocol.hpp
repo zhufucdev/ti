@@ -34,12 +34,13 @@ size_t read_len_header(char *tsize);
 
 class Entity {
   public:
-    virtual std::string get_id() = 0;
+    virtual std::string get_id() const = 0;
+    bool operator==(Entity &other) const;
 };
 
 class Server : Entity {
   public:
-    std::string get_id() override;
+    std::string get_id() const override;
     Server();
 };
 
@@ -49,7 +50,7 @@ class User : public Entity {
   public:
     User(std::string id, std::string name);
 
-    std::string get_id() override;
+    std::string get_id() const override;
     std::string get_name();
 };
 
@@ -60,15 +61,15 @@ class Group : public Entity {
   public:
     Group(std::string id, std::string name, std::vector<Entity *> members);
 
-    std::string get_id() override;
+    std::string get_id() const override;
     std::string get_name();
     std::vector<Entity *> &get_members();
 };
 
 class Frame {
   public:
-    virtual std::string to_string() = 0;
-    virtual std::string get_id() = 0;
+    virtual std::string to_string() const = 0;
+    virtual std::string get_id() const = 0;
 };
 
 class TextFrame : public Frame {
@@ -77,8 +78,8 @@ class TextFrame : public Frame {
 
   public:
     TextFrame(std::string id, std::string content);
-    std::string get_id() override;
-    std::string to_string() override;
+    std::string get_id() const override;
+    std::string to_string() const override;
 };
 
 class Message {
@@ -113,12 +114,12 @@ class Row {
   public:
     explicit Row(sqlite3_stmt *handle);
     std::string get_text(int col);
-    int get_int(int col);
-    long get_int64(int col);
-    int get_blob(int col, const void **rec);
-    double get_double(int col);
-    std::string get_name(int col);
-    int get_type(int col);
+    int get_int(int col) const;
+    long get_int64(int col) const;
+    int get_blob(int col, const void **rec) const;
+    double get_double(int col) const;
+    std::string get_name(int col) const;
+    int get_type(int col) const;
 };
 
 class SqlTransaction {
@@ -179,8 +180,8 @@ class Contact {
 
   public:
     Contact(User *owner, Entity *contact);
-    Entity *get_owner();
-    Entity *get_contact();
+    Entity *get_owner() const;
+    Entity *get_contact() const;
 };
 
 class TiOrm : SqlDatabase {
@@ -192,9 +193,9 @@ class TiOrm : SqlDatabase {
     explicit TiOrm(const std::string &dbfile);
     TiOrm(const TiOrm &t);
     ~TiOrm();
-    const std::vector<User *> get_users();
-    const Entity *get_entity(const std::string &id);
-    const std::vector<Message *> &get_messages();
+    std::vector<User *> get_users() const;
+    const Entity *get_entity(const std::string &id) const;
+    const std::vector<Message *> &get_messages() const;
 };
 
 class ServerOrm : public TiOrm {
@@ -202,9 +203,8 @@ class ServerOrm : public TiOrm {
 
   public:
     explicit ServerOrm(const std::string &dbfile);
-    ServerOrm(const ServerOrm &t);
     const std::vector<Contact *> &get_contacts();
-    const std::vector<Entity *> get_contacts(User *owner);
+    std::vector<Entity *> get_contacts(User *owner);
 };
 } // namespace orm
 } // namespace ti
