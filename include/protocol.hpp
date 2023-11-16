@@ -1,4 +1,4 @@
-#include "nanoid/nanoid.h"
+#include "../thirdparty/NanoId/include/nanoid.h"
 #include <iostream>
 #include <sqlite3.h>
 #include <vector>
@@ -173,7 +173,6 @@ class SqlDatabase {
     static void initialize();
     static void shutdown();
 };
-
 
 class TiOrm : public SqlDatabase {
     std::vector<Entity *> entities;

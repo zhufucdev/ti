@@ -1,9 +1,11 @@
-#include <log.hpp>
 #include <server/behavior.hpp>
+#include <log.hpp>
 
 using namespace ti::server;
 
-ServerOrm::ServerOrm(const std::string &dbfile) : TiOrm(dbfile) {}
+ServerOrm::ServerOrm(const std::string &dbfile) : TiOrm(dbfile) {
+    exec_sql_no_result("CREATE TABLE IF NOT EXISTS \"password\"(\n    \n) ");
+}
 const std::vector<Contact *> &ServerOrm::get_contacts() { return contacts; }
 std::vector<ti::Entity *> ServerOrm::get_contacts(User *owner) {
     std::vector<Entity *> ev;
@@ -20,8 +22,7 @@ Contact::Contact(User *owner, Entity *contact)
 ti::Entity *Contact::get_contact() const { return contact; }
 ti::Entity *Contact::get_owner() const { return owner; }
 
-TiServer::TiServer(std::string addr, short port,
-                   std::string dbfile)
+TiServer::TiServer(std::string addr, short port, std::string dbfile)
     : Server(std::move(addr), port), db(dbfile) {}
 TiServer::~TiServer() = default;
 Client *TiServer::on_connect(sockaddr_in addr) { return new TiClient(db); }

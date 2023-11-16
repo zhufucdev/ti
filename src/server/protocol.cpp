@@ -76,7 +76,7 @@ void Server::handleconn(sockaddr_in addr, int clientfd) {
     std::thread([&] {
         auto *handler = this->on_connect(addr);
         handler->initialize([&](char *content, int len) {
-            this->send(clientfd, content, len);
+            ti::server::Server::send(clientfd, content, len);
         });
         handler->on_connect(addr);
 

@@ -21,7 +21,7 @@
  *     If not, see <http://www.gnu.org/licenses/>.
  */
 
-#include "aes256.hpp"
+#include "../include/aes256.h"
 
 #include <iostream>
 #include <stdlib.h>

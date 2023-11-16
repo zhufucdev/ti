@@ -1,10 +1,10 @@
 #pragma once
 
-#include "nanoid/settings.h"
-#include "nanoid/crypto_random.h"
-#include <string>
-#include <random>
+#include "crypto_random.h"
+#include "settings.h"
 #include <future>
+#include <random>
+#include <string>
 
 namespace NANOID_NAMESPACE
 {

@@ -1,4 +1,4 @@
-#include "nanoid/crypto_random.h"
+#include "crypto_random.h"
 
 template<class... T> void unused(T&&...) {}
 

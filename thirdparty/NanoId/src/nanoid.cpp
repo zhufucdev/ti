@@ -1,4 +1,4 @@
-#include "nanoid/nanoid.h"
+#include "nanoid.h"
 #include <cmath>
 #include <future>
 #include <random>

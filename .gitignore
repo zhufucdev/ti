@@ -13,6 +13,8 @@
 /CTestTestfile.cmake
 /_deps
 /ti
-/build.ninja
+**/build.ninja
 /.ninja_*
 /bin/
+/cmake-build-release
+/cmake-build-debug

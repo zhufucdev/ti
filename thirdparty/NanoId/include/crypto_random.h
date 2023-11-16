@@ -1,6 +1,6 @@
 #pragma once
 
-#include "nanoid/settings.h"
+#include "settings.h"
 #include <cstdint>
 #include <limits>
 #include <utility>
