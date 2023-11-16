@@ -175,7 +175,7 @@ class SqlDatabase {
 };
 
 
-class TiOrm : SqlDatabase {
+class TiOrm : public SqlDatabase {
     std::vector<Entity *> entities;
     std::vector<Frame *> frames;
     std::vector<Message *> messages;
