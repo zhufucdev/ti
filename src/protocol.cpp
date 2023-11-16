@@ -36,7 +36,7 @@ std::string Server::get_id() const { return "zGuEzyj3EUyeSKAvHw3Zo"; }
 User::User(std::string id, std::string name)
     : id(std::move(id)), name(std::move(name)) {}
 std::string User::get_id() const { return id; }
-std::string User::get_name() { return name; }
+std::string User::get_name() const { return name; }
 
 Group::Group(std::string id, std::string name, std::vector<Entity *> members)
     : id(std::move(id)), name(std::move(name)), members(std::move(members)) {}
@@ -233,11 +233,6 @@ SqlTransaction *SqlDatabase::prepare(const std::string &expr) {
 void SqlDatabase::initialize() { sqlite3_initialize(); }
 void SqlDatabase::shutdown() { sqlite3_shutdown(); }
 
-Contact::Contact(User *owner, Entity *contact)
-    : owner(owner), contact(contact) {}
-Entity *Contact::get_contact() const { return contact; }
-Entity *Contact::get_owner() const { return owner; }
-
 static std::string init_sql() {
     return "CREATE TABLE IF NOT EXISTS \"user\"\n"
            "(\n    id   varchar(21) primary key not null,\n"
@@ -355,14 +350,3 @@ const Entity *TiOrm::get_entity(const std::string &id) const {
 }
 const std::vector<Message *> &TiOrm::get_messages() const { return messages; }
 
-ServerOrm::ServerOrm(const std::string &dbfile) : TiOrm(dbfile) {}
-const std::vector<Contact *> &ServerOrm::get_contacts() { return contacts; }
-std::vector<Entity *> ServerOrm::get_contacts(User *owner) {
-    std::vector<Entity *> ev;
-    for (auto e : contacts) {
-        if (e->get_owner() == owner) {
-            ev.push_back(e->get_contact());
-        }
-    }
-    return ev;
-}

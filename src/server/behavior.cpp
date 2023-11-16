@@ -3,6 +3,23 @@
 
 using namespace ti::server;
 
+ServerOrm::ServerOrm(const std::string &dbfile) : TiOrm(dbfile) {}
+const std::vector<Contact *> &ServerOrm::get_contacts() { return contacts; }
+std::vector<ti::Entity *> ServerOrm::get_contacts(User *owner) {
+    std::vector<Entity *> ev;
+    for (auto e : contacts) {
+        if (e->get_owner() == owner) {
+            ev.push_back(e->get_contact());
+        }
+    }
+    return ev;
+}
+
+Contact::Contact(User *owner, Entity *contact)
+    : owner(owner), contact(contact) {}
+ti::Entity *Contact::get_contact() const { return contact; }
+ti::Entity *Contact::get_owner() const { return owner; }
+
 TiServer::TiServer(std::string addr, short port,
                    std::string dbfile)
     : Server(std::move(addr), port), db(dbfile) {}
@@ -27,7 +44,7 @@ std::vector<std::string> read_message_body(const char *data, size_t len) {
     return heap;
 }
 
-TiClient::TiClient(const orm::TiOrm &db) : db(db) {}
+TiClient::TiClient(const ServerOrm &db) : db(db) {}
 TiClient::~TiClient() = default;
 void TiClient::on_connect(sockaddr_in addr) {
     logD("Connected to %s as %s", inet_ntoa(addr.sin_addr), id.c_str());

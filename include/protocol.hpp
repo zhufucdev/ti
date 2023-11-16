@@ -51,7 +51,7 @@ class User : public Entity {
     User(std::string id, std::string name);
 
     std::string get_id() const override;
-    std::string get_name();
+    std::string get_name() const;
 };
 
 class Group : public Entity {
@@ -174,15 +174,6 @@ class SqlDatabase {
     static void shutdown();
 };
 
-class Contact {
-    User *owner;
-    Entity *contact;
-
-  public:
-    Contact(User *owner, Entity *contact);
-    Entity *get_owner() const;
-    Entity *get_contact() const;
-};
 
 class TiOrm : SqlDatabase {
     std::vector<Entity *> entities;
@@ -196,15 +187,6 @@ class TiOrm : SqlDatabase {
     std::vector<User *> get_users() const;
     const Entity *get_entity(const std::string &id) const;
     const std::vector<Message *> &get_messages() const;
-};
-
-class ServerOrm : public TiOrm {
-    std::vector<Contact *> contacts;
-
-  public:
-    explicit ServerOrm(const std::string &dbfile);
-    const std::vector<Contact *> &get_contacts();
-    std::vector<Entity *> get_contacts(User *owner);
 };
 } // namespace orm
 } // namespace ti
