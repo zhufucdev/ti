@@ -101,7 +101,7 @@ SqlTransaction::RowIterator SqlTransaction::end() {
 SqlTransaction::RowIterator::RowIterator(sqlite3_stmt *handle, bool end)
     : handle(handle), rc(end ? SQLITE_DONE : SQLITE_ROW), row(handle) {
     if (end) {
-        count = sqlite3_column_count(handle);
+        count = sqlite3_data_count(handle);
     } else {
         count = 0;
     }
@@ -109,6 +109,7 @@ SqlTransaction::RowIterator::RowIterator(sqlite3_stmt *handle, bool end)
 SqlTransaction::RowIterator &SqlTransaction::RowIterator::operator++() {
     if (rc == SQLITE_ROW) {
         rc = sqlite3_step(handle);
+        count++;
     }
     return *this;
 }
