@@ -1,5 +1,4 @@
 #include "protocol.hpp"
-#include "orm.h"
 
 namespace ti {
 namespace client {
@@ -18,9 +17,9 @@ class TiClient : public Client {
     VerificationResult user_login(std::string name, std::string password);
     bool user_reg(std::string name, std::string password);
     bool user_logout();
-    std::vector<User *> get_current_user();
-    std::vector<Entity *> get_contacts();
-    Entity *get_entity(std::string id);
+    std::vector<User *> get_current_user() const;
+    std::vector<Entity *> get_contacts() const;
+    Entity *get_entity(std::string id) const;
     void send(Message *message);
     void on_connect(sockaddr_in serveraddr) override;
     void on_message(char *data, size_t len) override;

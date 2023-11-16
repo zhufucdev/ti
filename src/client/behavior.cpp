@@ -30,13 +30,13 @@ bool TiClient::user_reg(std::string name, std::string password) {
 bool TiClient::user_logout() {
 
 }
-std::vector<User *> TiClient::get_current_user() {
+std::vector<User *> TiClient::get_current_user() const {
 
 }
-std::vector<Entity *> TiClient::get_contacts() {
+std::vector<Entity *> TiClient::get_contacts() const {
 
 }
-Entity *TiClient::get_entity(std::string id) {
+Entity *TiClient::get_entity(std::string id) const {
 
 }
 void TiClient::send(ti::Message *message) {
