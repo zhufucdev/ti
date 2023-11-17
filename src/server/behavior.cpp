@@ -1,29 +1,121 @@
-#include <server/behavior.hpp>
 #include <log.hpp>
+#include <server/behavior.hpp>
 
 using namespace ti::server;
+using namespace ti;
 
 ServerOrm::ServerOrm(const std::string &dbfile) : TiOrm(dbfile) {
-    exec_sql_no_result("CREATE TABLE IF NOT EXISTS \"password\"(\n    \n) ");
+    logD("[server orm] executing initializing SQL");
+    exec_sql_no_result("CREATE TABLE IF NOT EXISTS \"password\"\n(\n"
+                       "    user_id varchar(21) primary key not null,\n"
+                       "    hash    varchar(255)            not null,\n"
+                       "    FOREIGN KEY (user_id)\n"
+                       "        REFERENCES user (id)\n"
+                       "        ON DELETE CASCADE\n"
+                       ");\n"
+                       "CREATE TABLE IF NOT EXISTS \"token\"\n"
+                       "(\n"
+                       "    id         int primary key,\n"
+                       "    user_id    varchar(21) not null,\n"
+                       "    token      varchar(21) not null,\n"
+                       "    identifier varchar     not null,\n"
+                       "    FOREIGN KEY (user_id)\n"
+                       "        REFERENCES user (id)\n"
+                       "        ON DELETE CASCADE\n"
+                       ");\n"
+                       "CREATE TABLE IF NOT EXISTS \"contact\"\n"
+                       "(\n"
+                       "    id         integer autoincrement primary key,\n"
+                       "    owner_id   varchar(21) not null,\n"
+                       "    contact_id varchar(21) not null\n"
+                       ");\n");
 }
-const std::vector<Contact *> &ServerOrm::get_contacts() { return contacts; }
-std::vector<ti::Entity *> ServerOrm::get_contacts(User *owner) {
+void ServerOrm::pull() {
+    contacts.clear();
+    auto t = prepare("SELECT * FROM \"contact\"");
+    for (auto e : *t) {
+        contacts.emplace_back(get_user(e.get_text(0)),
+                              get_entity(e.get_text(1)));
+    }
+    delete t;
+
+    tokens.clear();
+    t = prepare("SELECT (user_id, token) FROM \"token\"");
+    for (auto e : *t) {
+        tokens.emplace_back(get_user(e.get_text(0)), e.get_text(1));
+    }
+    delete t;
+}
+std::vector<Entity *> ServerOrm::get_contacts(const User &owner) const {
     std::vector<Entity *> ev;
     for (auto e : contacts) {
-        if (e->get_owner() == owner) {
-            ev.push_back(e->get_contact());
+        if (*e.first == owner) {
+            ev.push_back(e.second);
         }
     }
     return ev;
 }
+int ServerOrm::get_password(const std::string &user_id,
+                            const void **buf) const {
+    auto t = prepare("SELECT hash FROM password WHERE user_id = ?");
+    t->bind_text(0, user_id);
+    if (t->begin() == t->end()) {
+        return 0;
+    }
+    auto n = (*t->begin()).get_blob(0, buf);
+    delete t;
+    return n;
+}
+User *ServerOrm::check_token(const std::string &token) const {
+    for (const auto &t : tokens) {
+        if (t.second == token) {
+            return t.first;
+        }
+    }
+    return nullptr;
+}
+void ServerOrm::add_token(User *owner, const std::string &token) {
+    tokens.emplace_back(owner, token);
+    auto t = prepare("INSERT INTO \"token\"(user_id, token)  VALUES (?, ?)");
+    t->bind_text(0, owner->get_id());
+    t->bind_text(1, token);
+    t->begin();
+    delete t;
+}
+bool ServerOrm::invalidate_token(int token_id, User *owner) {
+    if (owner == nullptr) {
+        auto t = prepare("DELETE FROM token WHERE id = ?");
+        t->bind_int(0, token_id);
+        t->begin();
+    } else {
+        auto r = prepare("DELETE FROM token WHERE id = ? AND user_id = ?");
+        r->bind_int(0, token_id);
+        r->bind_text(1, owner->get_id());
+        r->begin();
+    }
+    return get_changes() > 0;
+}
+bool ServerOrm::invalidate_token(const std::string &token) {
+    int i;
+    bool found = false;
+    for (i = 0; i < tokens.size(); i++) {
+        if (tokens[i].second == token) {
+            found = true;
+            break;
+        }
+    }
+    if (found) {
+        tokens.erase(tokens.begin() + i);
+        auto t = prepare("DELETE FROM token WHERE token = ?");
+        t->bind_text(0, token);
+    }
+    return found;
+}
 
-Contact::Contact(User *owner, Entity *contact)
-    : owner(owner), contact(contact) {}
-ti::Entity *Contact::get_contact() const { return contact; }
-ti::Entity *Contact::get_owner() const { return owner; }
-
-TiServer::TiServer(std::string addr, short port, std::string dbfile)
-    : Server(std::move(addr), port), db(dbfile) {}
+TiServer::TiServer(std::string addr, short port, const std::string &dbfile)
+    : Server(std::move(addr), port), db(dbfile) {
+    db.pull();
+}
 TiServer::~TiServer() = default;
 Client *TiServer::on_connect(sockaddr_in addr) { return new TiClient(db); }
 
@@ -45,20 +137,77 @@ std::vector<std::string> read_message_body(const char *data, size_t len) {
     return heap;
 }
 
-TiClient::TiClient(const ServerOrm &db) : db(db) {}
+TiClient::TiClient(ServerOrm &db) : db(db), user(nullptr), token() {}
 TiClient::~TiClient() = default;
 void TiClient::on_connect(sockaddr_in addr) {
-    logD("Connected to %s as %s", inet_ntoa(addr.sin_addr), id.c_str());
+    logD("[client %s] connected to %s", id.c_str(), inet_ntoa(addr.sin_addr));
 }
-void TiClient::on_message(char *data, size_t len) {
-    auto req_t = (RequestType)data[0];
-    auto body = read_message_body(data, len);
-    switch (req_t) {
+void TiClient::on_message(ti::RequestCode req, char *data, size_t len) {
+    auto body = read_message_body(data + 1, len);
+    switch (req) {
     case LOGIN:
-
+        login(body[0], body[1]);
+        break;
+    case LOGOUT:
+        logout();
+        break;
+    case DETERMINE:
+        determine(body[0], std::stoi(body[1]));
+        break;
+    case RECONNECT:
+        reconnect(body[0]);
         break;
     }
-    send(data, len);
+}
+
+void TiClient::login(const std::string &user_id, const std::string &passcode) {
+    const void *buf;
+    int n = db.get_password(user_id, &buf);
+    if (n > 0) {
+        if (strcmp((const char *)buf, passcode.c_str()) == 0) {
+            if ((user = db.get_user(user_id))) {
+                auto res_buf = (char *)calloc(21, sizeof(char));
+                token = nanoid::generate();
+                strcpy(res_buf, token.c_str());
+                send(ResponseCode::OK, res_buf, sizeof res_buf);
+                db.add_token(user, token);
+                logD("[client %s] logged in as %s", id.c_str(),
+                     user_id.c_str());
+                return;
+            }
+        }
+    }
+    send(ResponseCode::NOT_FOUND, nullptr, 0);
+}
+
+void TiClient::reconnect(const std::string &old_token) {
+    user = db.check_token(old_token);
+    if (user == nullptr) {
+        send(ti::ResponseCode::NOT_FOUND);
+    } else {
+        token = old_token;
+        send(ti::ResponseCode::OK);
+    }
+}
+
+void TiClient::determine(const std::string &curr_token, int token_id) {
+    if (curr_token != token || user == nullptr) {
+        send(ResponseCode::TOKEN_EXPIRED);
+    } else if (db.invalidate_token(token_id, user)) {
+        send(ResponseCode::OK);
+    } else {
+        send(ResponseCode::NOT_FOUND);
+    }
+}
+
+void TiClient::logout() {
+    if (token.empty()) {
+        send(ResponseCode::TOKEN_EXPIRED);
+    } else if (db.invalidate_token(token)) {
+        send(ResponseCode::OK);
+    } else {
+        send(ResponseCode::NOT_FOUND);
+    }
 }
 
 void TiClient::on_disconnect() { logD("%s disconnected", id.c_str()); }

@@ -27,9 +27,14 @@ void Client::start() {
     std::thread([&] {
         while (running) {
             sockmtx.lock();
+            char *tres = (char *)calloc(1, sizeof(char));
+            ssize_t n = recv(socketfd, tres, 1, 0);
+            if (n <= 0) {
+                break;
+            }
+
             char *tsize = (char *)calloc(BYTES_LEN_HEADER, sizeof(char));
-            ssize_t n =
-                recv(socketfd, tsize, BYTES_LEN_HEADER * sizeof(char), 0);
+            n = recv(socketfd, tsize, BYTES_LEN_HEADER * sizeof(char), 0);
             if (n <= 0) {
                 break;
             }
@@ -39,13 +44,13 @@ void Client::start() {
             if (n <= 0) {
                 break;
             }
-            auto res_c = (ResponseCode)buff[0];
+            auto res_c = (ResponseCode)*tres;
             if (res_c == ResponseCode::MESSAGE) {
-                on_message(buff + 1, n - 1);
+                on_message(buff, n);
                 delete buff;
             } else {
                 resmtx.lock();
-                res_queue.push(Response{buff + 1, n - 1, res_c});
+                res_queue.push(Response{buff, n, res_c});
                 resmtx.unlock();
             }
             sockmtx.unlock();

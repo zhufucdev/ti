@@ -228,6 +228,9 @@ void SqlDatabase::exec_sql_no_result(const std::string &expr) const {
         throw std::runtime_error(m);
     }
 }
+int SqlDatabase::get_changes() const {
+    return sqlite3_changes(dbhandle);
+}
 SqlTransaction *SqlDatabase::prepare(const std::string &expr) const {
     return new SqlTransaction(expr, dbhandle);
 }

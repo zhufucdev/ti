@@ -6,6 +6,7 @@ void Client::initialize(SendFn fn) { sendfn = std::move(fn); }
 void Client::send(ti::ResponseCode res, char *content, size_t len) const {
     sendfn(res, content, len);
 }
+void Client::send(ti::ResponseCode res) const { sendfn(res, nullptr, 0); }
 
 Server::Server(std::string addr, short port)
     : addr(std::move(addr)), port(port), running(false) {}
@@ -87,8 +88,12 @@ void Server::handleconn(sockaddr_in addr, int clientfd) {
         size_t msize;
 
         while (true) {
-            ssize_t n =
-                recv(clientfd, tsize, BYTES_LEN_HEADER * sizeof(char), 0);
+            char *treq = (char *)calloc(1, sizeof(char));
+            ssize_t n = recv(socketfd, treq, 1, 0);
+            if (n <= 0) {
+                break;
+            }
+            n = recv(clientfd, tsize, BYTES_LEN_HEADER * sizeof(char), 0);
             if (n <= 0) {
                 break;
             }
@@ -98,7 +103,7 @@ void Server::handleconn(sockaddr_in addr, int clientfd) {
             if (n <= 0) {
                 break;
             }
-            handler->on_message(buff, msize);
+            handler->on_message((RequestCode)*treq, buff, msize);
         }
 
         closesocketfd(clientfd);
@@ -112,11 +117,13 @@ void Server::handleconn(sockaddr_in addr, int clientfd) {
 void Server::send(int clientfd, ResponseCode res, char *data, size_t len) {
     auto *tres = (char *)calloc(1, sizeof(char));
     tres[0] = res;
-    char *tsize = write_len_header(len);
     ::send(clientfd, tres, sizeof(char), 0);
-    ::send(clientfd, tsize, sizeof(char) * BYTES_LEN_HEADER, 0);
-    ::send(clientfd, data, len, 0);
-    delete tsize;
+    if (len > 0) {
+        char *tsize = write_len_header(len);
+        ::send(clientfd, tsize, sizeof(char) * BYTES_LEN_HEADER, 0);
+        ::send(clientfd, data, len, 0);
+        delete tsize;
+    }
     delete tres;
 }
 

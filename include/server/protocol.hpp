@@ -11,8 +11,9 @@ class Client {
     virtual ~Client() = default;
     void initialize(SendFn fn);
     void send(ResponseCode res, char *content, size_t len) const;
+    void send(ResponseCode res) const;
     virtual void on_connect(sockaddr_in addr) = 0;
-    virtual void on_message(char *content, size_t len) = 0;
+    virtual void on_message(RequestCode req, char *content, size_t len) = 0;
     virtual void on_disconnect() = 0;
 };
 class Server {

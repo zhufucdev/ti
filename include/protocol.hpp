@@ -106,7 +106,8 @@ enum RequestCode {
 enum ResponseCode {
     OK = 0,
     NOT_FOUND,
-    MESSAGE,
+    TOKEN_EXPIRED,
+    MESSAGE
 };
 
 namespace orm {
@@ -173,6 +174,7 @@ class SqlDatabase {
     SqlTransaction *prepare(const std::string &expr) const;
     Table *exec_sql(const std::string &expr) const;
     void exec_sql_no_result(const std::string &expr) const;
+    int get_changes() const;
 
   public:
     explicit SqlDatabase(const std::string &dbfile);
