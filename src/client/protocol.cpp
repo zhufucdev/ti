@@ -26,8 +26,10 @@ void Client::start() {
 
     std::thread([&] {
         while (running) {
+            sockmtx.lock();
             char *tsize = (char *)calloc(BYTES_LEN_HEADER, sizeof(char));
-            int n = recv(socketfd, tsize, BYTES_LEN_HEADER * sizeof(char), 0);
+            ssize_t n =
+                recv(socketfd, tsize, BYTES_LEN_HEADER * sizeof(char), 0);
             if (n <= 0) {
                 break;
             }
@@ -37,7 +39,16 @@ void Client::start() {
             if (n <= 0) {
                 break;
             }
-            on_message(buff, n);
+            auto res_c = (ResponseCode)buff[0];
+            if (res_c == ResponseCode::MESSAGE) {
+                on_message(buff + 1, n - 1);
+                delete buff;
+            } else {
+                resmtx.lock();
+                res_queue.push(Response{buff + 1, n - 1, res_c});
+                resmtx.unlock();
+            }
+            sockmtx.unlock();
         }
         on_close();
         running = false;
@@ -50,8 +61,24 @@ void Client::stop() {
     running = false;
     ::closesocketfd(socketfd);
 }
-void Client::send(const void *data, size_t len) {
+Response Client::send(const RequestCode req_c, const void *data, size_t len) {
+    auto *treq = (char *)calloc(1, sizeof(char));
+    treq[0] = req_c;
     char *tsize = write_len_header(len);
+    ::send(socketfd, treq, sizeof(char), 0);
     ::send(socketfd, tsize, BYTES_LEN_HEADER * sizeof(char), 0);
     ::send(socketfd, data, len, 0);
+    delete tsize;
+    delete treq;
+
+    while (res_queue.empty()) {
+        // sockmtx should be locked very soon
+        sockmtx.lock();
+        sockmtx.unlock();
+    }
+    resmtx.lock();
+    auto front = res_queue.front();
+    res_queue.pop();
+    resmtx.unlock();
+    return front;
 }

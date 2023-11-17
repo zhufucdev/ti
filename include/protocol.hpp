@@ -1,4 +1,4 @@
-#include "../thirdparty/NanoId/include/nanoid.h"
+#include "nanoid.h"
 #include <iostream>
 #include <sqlite3.h>
 #include <vector>
@@ -35,10 +35,10 @@ size_t read_len_header(char *tsize);
 class Entity {
   public:
     virtual std::string get_id() const = 0;
-    bool operator==(Entity &other) const;
+    bool operator==(const Entity &other) const;
 };
 
-class Server : Entity {
+class Server : public Entity {
   public:
     std::string get_id() const override;
     Server();
@@ -91,14 +91,22 @@ class Message {
   public:
     Message(std::string id, std::vector<Frame *> content, std::time_t time,
             Entity *sender, Entity *receiver, Entity *forwared_from);
-    std::vector<Frame *> &get_frames();
-    std::string get_id();
-    Entity &get_sender();
-    Entity &get_receiver();
+    const std::vector<Frame *> &get_frames() const;
+    std::string get_id() const;
+    Entity &get_sender() const;
+    Entity &get_receiver() const;
 };
 
-enum RequestType {
-    LOGIN = 0x00,
+enum RequestCode {
+    LOGIN = 0,
+    RECONNECT,
+    LOGOUT,
+    DETERMINE,
+};
+enum ResponseCode {
+    OK = 0,
+    NOT_FOUND,
+    MESSAGE,
 };
 
 namespace orm {
@@ -113,7 +121,7 @@ class Row {
 
   public:
     explicit Row(sqlite3_stmt *handle);
-    std::string get_text(int col);
+    std::string get_text(int col) const;
     int get_int(int col) const;
     long get_int64(int col) const;
     int get_blob(int col, const void **rec) const;
@@ -162,9 +170,9 @@ class SqlDatabase {
     bool is_cpy;
 
   protected:
-    SqlTransaction *prepare(const std::string &expr);
-    Table *exec_sql(const std::string &expr);
-    void exec_sql_no_result(const std::string &expr);
+    SqlTransaction *prepare(const std::string &expr) const;
+    Table *exec_sql(const std::string &expr) const;
+    void exec_sql_no_result(const std::string &expr) const;
 
   public:
     explicit SqlDatabase(const std::string &dbfile);
@@ -178,13 +186,15 @@ class TiOrm : public SqlDatabase {
     std::vector<Entity *> entities;
     std::vector<Frame *> frames;
     std::vector<Message *> messages;
-
   public:
     explicit TiOrm(const std::string &dbfile);
     TiOrm(const TiOrm &t);
     ~TiOrm();
+    virtual void pull();
     std::vector<User *> get_users() const;
-    const Entity *get_entity(const std::string &id) const;
+    User *get_user(const std::string &id) const;
+    std::vector<Entity *> get_entities() const;
+    Entity *get_entity(const std::string &id) const;
     const std::vector<Message *> &get_messages() const;
 };
 } // namespace orm

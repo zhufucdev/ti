@@ -1,6 +1,6 @@
 #include "../protocol.hpp"
 
-#define SendFn std::function<void(char *, size_t)>
+#define SendFn std::function<void(ti::ResponseCode, char *, size_t)>
 
 namespace ti {
 namespace server {
@@ -10,7 +10,7 @@ class Client {
   public:
     virtual ~Client() = default;
     void initialize(SendFn fn);
-    void send(char *content, size_t len) const;
+    void send(ResponseCode res, char *content, size_t len) const;
     virtual void on_connect(sockaddr_in addr) = 0;
     virtual void on_message(char *content, size_t len) = 0;
     virtual void on_disconnect() = 0;
@@ -25,7 +25,7 @@ class Server {
   public:
     Server(std::string addr, short port);
     ~Server();
-    static void send(SocketFd clientfd, char *data, size_t len);
+    static void send(SocketFd clientfd, ResponseCode res, char *data, size_t len);
     virtual Client *on_connect(sockaddr_in addr) = 0;
     void start();
     void stop();

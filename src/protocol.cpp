@@ -26,7 +26,7 @@ size_t ti::read_len_header(char *tsize) {
     return msize;
 }
 
-bool Entity::operator==(ti::Entity &other) const {
+bool Entity::operator==(const Entity &other) const {
     return other.get_id() == get_id();
 }
 
@@ -54,10 +54,10 @@ Message::Message(std::string id, std::vector<Frame *> content, std::time_t time,
                  ti::Entity *forwared_from)
     : id(std::move(id)), frames(std::move(content)), time(time), sender(sender),
       receiver(receiver), forwarded_from(forwared_from) {}
-std::vector<Frame *> &Message::get_frames() { return frames; }
-std::string Message::get_id() { return id; }
-Entity &Message::get_sender() { return *sender; }
-Entity &Message::get_receiver() { return *receiver; }
+const std::vector<Frame *> &Message::get_frames() const { return frames; }
+std::string Message::get_id() const { return id; }
+Entity &Message::get_sender() const { return *sender; }
+Entity &Message::get_receiver() const { return *receiver; }
 
 SqlTransaction::SqlTransaction(const std::string &expr, sqlite3 *db) {
     int n =
@@ -143,7 +143,7 @@ double Row::get_double(int col) const {
 int Row::get_int(int col) const { return sqlite3_column_int(handle, col); }
 long Row::get_int64(int col) const { return sqlite3_column_int64(handle, col); }
 int Row::get_type(int col) const { return sqlite3_column_type(handle, col); }
-std::string Row::get_text(int col) {
+std::string Row::get_text(int col) const {
     const unsigned char *s = sqlite3_column_text(handle, col);
     return reinterpret_cast<const char *>(s);
 }
@@ -201,7 +201,7 @@ int callback(void *t, int argc, char **argv, char **azColName) {
     tt->height++;
     return 0;
 }
-Table *SqlDatabase::exec_sql(const std::string &expr) {
+Table *SqlDatabase::exec_sql(const std::string &expr) const {
     auto *tt = (Table *)malloc(sizeof(Table));
     tt->height = 0;
     tt->width = 0;
@@ -220,7 +220,7 @@ Table *SqlDatabase::exec_sql(const std::string &expr) {
         throw std::runtime_error(m);
     }
 }
-void SqlDatabase::exec_sql_no_result(const std::string &expr) {
+void SqlDatabase::exec_sql_no_result(const std::string &expr) const {
     char *err;
     int n = sqlite3_exec(dbhandle, expr.c_str(), nullptr, nullptr, &err);
     if (n != SQLITE_OK) {
@@ -228,7 +228,7 @@ void SqlDatabase::exec_sql_no_result(const std::string &expr) {
         throw std::runtime_error(m);
     }
 }
-SqlTransaction *SqlDatabase::prepare(const std::string &expr) {
+SqlTransaction *SqlDatabase::prepare(const std::string &expr) const {
     return new SqlTransaction(expr, dbhandle);
 }
 void SqlDatabase::initialize() { sqlite3_initialize(); }
@@ -290,6 +290,10 @@ TiOrm::TiOrm(const std::string &dbfile) : SqlDatabase(dbfile) {
         "    forwarded_id varchar(21)             not null\n"
         ");\n"
         "");
+}
+void TiOrm::pull() {
+    entities.clear();
+    entities.push_back(new Server());
     auto t = exec_sql("SELECT * FROM \"user\"");
     for (int i = 0; i < t->height; ++i) {
         auto row = t->rows[i];
@@ -306,14 +310,18 @@ TiOrm::TiOrm(const std::string &dbfile) : SqlDatabase(dbfile) {
         entities.push_back(new Group(row[0], row[1], members));
     }
     delete t;
+
+    frames.clear();
     t = exec_sql("SELECT * FROM \"text_frame\"");
     for (int i = 0; i < t->height; ++i) {
         auto row = t->rows[i];
         frames.push_back(new TextFrame(row[0], row[1]));
     }
     delete t;
-    auto transaction = prepare("SELECT * FROM \"message\"");
-    for (auto row : *transaction) {
+
+    messages.clear();
+    auto tr = prepare("SELECT * FROM \"message\"");
+    for (auto row : *tr) {
         auto fs = row.get_text(1);
         auto content =
             maps<Frame *>(row.get_text(1), ',', [&](std::string &id) {
@@ -325,7 +333,7 @@ TiOrm::TiOrm(const std::string &dbfile) : SqlDatabase(dbfile) {
                         get_entity_in(entities, row.get_text(4)),
                         get_entity_in(entities, row.get_text(5))));
     }
-    delete transaction;
+    delete tr;
 }
 TiOrm::~TiOrm() = default;
 std::vector<User *> TiOrm::get_users() const {
@@ -337,7 +345,17 @@ std::vector<User *> TiOrm::get_users() const {
     }
     return users;
 }
-const Entity *TiOrm::get_entity(const std::string &id) const {
+User *TiOrm::get_user(const std::string &id) const {
+    User *u;
+    for (auto e : entities) {
+        if (e->get_id() == id && (u = dynamic_cast<User *>(e))) {
+            return u;
+        }
+    }
+    return nullptr;
+}
+std::vector<Entity *> TiOrm::get_entities() const { return entities; }
+Entity *TiOrm::get_entity(const std::string &id) const {
     for (auto e : entities) {
         if (e->get_id() == id) {
             return e;
