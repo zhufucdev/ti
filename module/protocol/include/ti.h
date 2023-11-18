@@ -1,5 +1,4 @@
-#include "nanoid.h"
-#include <iostream>
+#include <string>
 #include <sqlite3.h>
 #include <vector>
 
@@ -45,10 +44,10 @@ class Server : public Entity {
 };
 
 class User : public Entity {
-    std::string name, id;
+    std::string name, id, bio;
 
   public:
-    User(std::string id, std::string name);
+    User(const std::string &id, const std::string &name, const std::string &bio);
 
     std::string get_id() const override;
     std::string get_name() const;
@@ -99,13 +98,15 @@ class Message {
 
 enum RequestCode {
     LOGIN = 0,
-    RECONNECT,
     LOGOUT,
+    REGISTER,
+    RECONNECT,
     DETERMINE,
 };
 enum ResponseCode {
     OK = 0,
     NOT_FOUND,
+    BAD_REQUEST,
     TOKEN_EXPIRED,
     MESSAGE
 };
@@ -195,6 +196,7 @@ class TiOrm : public SqlDatabase {
     virtual void pull();
     std::vector<User *> get_users() const;
     User *get_user(const std::string &id) const;
+    void add_entity(Entity *entity);
     std::vector<Entity *> get_entities() const;
     Entity *get_entity(const std::string &id) const;
     const std::vector<Message *> &get_messages() const;

@@ -1,6 +1,6 @@
-cmake_minimum_required(VERSION 3.13)
+cmake_minimum_required(VERSION 3.24)
 project(NanoId)
 
-file(GLOB SRC "${CMAKE_CURRENT_SOURCE_DIR}/src/*.cpp")
-add_library(NanoId "${SRC}")
+file(GLOB SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/src/*.cpp")
+add_library(NanoId "${SOURCES}")
 target_include_directories(NanoId PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/include")

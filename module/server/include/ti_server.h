@@ -1,4 +1,4 @@
-#include "protocol.hpp"
+#include "server.h"
 
 namespace ti {
 namespace server {
@@ -14,7 +14,8 @@ class ServerOrm : public orm::TiOrm {
     User *check_token(const std::string &token) const;
     void add_token(ti::User *owner, const std::string &token);
     bool invalidate_token(int token_id, User *owner = nullptr);
-    bool invalidate_token(const std::string &token);
+    bool invalidate_token(const std::string &token, User *owner = nullptr);
+    void add_user(User *user, const std::string &passcode);
 };
 class TiServer : public Server {
     ServerOrm db;
@@ -29,10 +30,11 @@ class TiClient : public Client {
     std::string id;
     User *user;
     std::string token;
-    void login(const std::string &user_id, const std::string &passcode);
+    void user_login(const std::string &user_id, const std::string &password);
     void reconnect(const std::string &old_token);
     void determine(const std::string &curr_token, int token_id);
-    void logout();
+    void logout(const std::string &old_token);
+    void user_register(const std::string &user_name, const std::string &passcode);
 
   public:
     explicit TiClient(ServerOrm &db);

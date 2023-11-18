@@ -1,4 +1,5 @@
-#include <client/protocol.hpp>
+#include "client.h"
+#include <thread>
 
 using namespace ti::client;
 
@@ -47,12 +48,13 @@ void Client::start() {
             auto res_c = (ResponseCode)*tres;
             if (res_c == ResponseCode::MESSAGE) {
                 on_message(buff, n);
-                delete buff;
             } else {
                 resmtx.lock();
                 res_queue.push(Response{buff, n, res_c});
                 resmtx.unlock();
             }
+            delete buff;
+            delete tres;
             sockmtx.unlock();
         }
         on_close();
@@ -77,7 +79,7 @@ Response Client::send(const RequestCode req_c, const void *data, size_t len) {
     delete treq;
 
     while (res_queue.empty()) {
-        // sockmtx should be locked very soon
+        // sockmtx should be unlocked very soon
         sockmtx.lock();
         sockmtx.unlock();
     }
@@ -86,4 +88,12 @@ Response Client::send(const RequestCode req_c, const void *data, size_t len) {
     res_queue.pop();
     resmtx.unlock();
     return front;
+}
+
+Response Client::send(ti::RequestCode req_c, const std::string &content) {
+    char *buf = (char *)calloc(req_len(content), sizeof(char));
+    append_req_buffer(buf, content);
+    auto res = send(req_c, buf, sizeof buf);
+    delete buf;
+    return res;
 }

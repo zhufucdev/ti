@@ -1,4 +1,4 @@
-#include "../protocol.hpp"
+#include "ti.h"
 
 #define SendFn std::function<void(ti::ResponseCode, char *, size_t)>
 

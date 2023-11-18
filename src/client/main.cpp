@@ -1,5 +1,5 @@
-#include <client/behavior.hpp>
-#include <log.hpp>
+#include "log.h"
+#include "ti_client.h"
 
 using ti::client::TiClient;
 

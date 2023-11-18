@@ -1,5 +1,6 @@
-#include <log.hpp>
-#include <server/behavior.hpp>
+#include "ti_server.h"
+#include "log.h"
+#include "nanoid.h"
 
 using namespace ti::server;
 using namespace ti;
@@ -8,7 +9,7 @@ ServerOrm::ServerOrm(const std::string &dbfile) : TiOrm(dbfile) {
     logD("[server orm] executing initializing SQL");
     exec_sql_no_result("CREATE TABLE IF NOT EXISTS \"password\"\n(\n"
                        "    user_id varchar(21) primary key not null,\n"
-                       "    hash    varchar(255)            not null,\n"
+                       "    hash    blob                    not null,\n"
                        "    FOREIGN KEY (user_id)\n"
                        "        REFERENCES user (id)\n"
                        "        ON DELETE CASCADE\n"
@@ -25,7 +26,7 @@ ServerOrm::ServerOrm(const std::string &dbfile) : TiOrm(dbfile) {
                        ");\n"
                        "CREATE TABLE IF NOT EXISTS \"contact\"\n"
                        "(\n"
-                       "    id         integer autoincrement primary key,\n"
+                       "    id         integer primary key,\n"
                        "    owner_id   varchar(21) not null,\n"
                        "    contact_id varchar(21) not null\n"
                        ");\n");
@@ -40,7 +41,7 @@ void ServerOrm::pull() {
     delete t;
 
     tokens.clear();
-    t = prepare("SELECT (user_id, token) FROM \"token\"");
+    t = prepare("SELECT user_id, token FROM \"token\"");
     for (auto e : *t) {
         tokens.emplace_back(get_user(e.get_text(0)), e.get_text(1));
     }
@@ -87,19 +88,22 @@ bool ServerOrm::invalidate_token(int token_id, User *owner) {
         auto t = prepare("DELETE FROM token WHERE id = ?");
         t->bind_int(0, token_id);
         t->begin();
+        delete t;
     } else {
-        auto r = prepare("DELETE FROM token WHERE id = ? AND user_id = ?");
-        r->bind_int(0, token_id);
-        r->bind_text(1, owner->get_id());
-        r->begin();
+        auto t = prepare("DELETE FROM token WHERE id = ? AND user_id = ?");
+        t->bind_int(0, token_id);
+        t->bind_text(1, owner->get_id());
+        t->begin();
+        delete t;
     }
     return get_changes() > 0;
 }
-bool ServerOrm::invalidate_token(const std::string &token) {
+bool ServerOrm::invalidate_token(const std::string &token, User *owner) {
     int i;
     bool found = false;
     for (i = 0; i < tokens.size(); i++) {
-        if (tokens[i].second == token) {
+        if (owner == nullptr ||
+            *tokens[i].first == *owner && tokens[i].second == token) {
             found = true;
             break;
         }
@@ -108,8 +112,18 @@ bool ServerOrm::invalidate_token(const std::string &token) {
         tokens.erase(tokens.begin() + i);
         auto t = prepare("DELETE FROM token WHERE token = ?");
         t->bind_text(0, token);
+        delete t;
     }
     return found;
+}
+
+void ServerOrm::add_user(ti::User *user, const std::string &passcode) {
+    add_entity(user);
+    auto t = prepare("INSERT INTO password VALUES (?, ?)");
+    t->bind_text(0, user->get_id());
+    t->bind_blob(1, (void *)passcode.c_str(), passcode.size());
+    t->begin();
+    delete t;
 }
 
 TiServer::TiServer(std::string addr, short port, const std::string &dbfile)
@@ -146,10 +160,13 @@ void TiClient::on_message(ti::RequestCode req, char *data, size_t len) {
     auto body = read_message_body(data + 1, len);
     switch (req) {
     case LOGIN:
-        login(body[0], body[1]);
+        user_login(body[0], body[1]);
         break;
     case LOGOUT:
-        logout();
+        logout(body[0]);
+        break;
+    case REGISTER:
+        user_register(body[0], body[1]);
         break;
     case DETERMINE:
         determine(body[0], std::stoi(body[1]));
@@ -160,11 +177,12 @@ void TiClient::on_message(ti::RequestCode req, char *data, size_t len) {
     }
 }
 
-void TiClient::login(const std::string &user_id, const std::string &passcode) {
+void TiClient::user_login(const std::string &user_id,
+                          const std::string &password) {
     const void *buf;
     int n = db.get_password(user_id, &buf);
     if (n > 0) {
-        if (strcmp((const char *)buf, passcode.c_str()) == 0) {
+        if (strcmp((const char *)buf, password.c_str()) == 0) {
             if ((user = db.get_user(user_id))) {
                 auto res_buf = (char *)calloc(21, sizeof(char));
                 token = nanoid::generate();
@@ -200,13 +218,26 @@ void TiClient::determine(const std::string &curr_token, int token_id) {
     }
 }
 
-void TiClient::logout() {
-    if (token.empty()) {
+void TiClient::logout(const std::string &old_token) {
+    if (token.empty() || user == nullptr) {
         send(ResponseCode::TOKEN_EXPIRED);
-    } else if (db.invalidate_token(token)) {
+    } else if (db.invalidate_token(token, user)) {
         send(ResponseCode::OK);
     } else {
         send(ResponseCode::NOT_FOUND);
+    }
+}
+
+void TiClient::user_register(const std::string &user_name,
+                             const std::string &passcode) {
+    auto invalid = std::find_if(user_name.begin(), user_name.end(),
+                                [&](const char c) { return c < 32; });
+    if (invalid != user_name.end()) {
+        send(ResponseCode::BAD_REQUEST);
+    } else {
+        auto user_id = nanoid::generate();
+        db.add_user(new User(user_id, user_name, {}), passcode);
+        send(ResponseCode::OK);
     }
 }
 

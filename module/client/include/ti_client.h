@@ -1,25 +1,25 @@
-#include "protocol.hpp"
+#include "client.h"
 
 namespace ti {
 namespace client {
-enum VerificationResult { OK, MISMATCH, NOT_EXISTING };
+enum VerificationResult { OK, MISMATCH };
 
 enum TiClientState { OFFLINE, LOGGED_OUT, READY, SENDING };
 
-class TiClient : public Client {
+class TiClient : public Client, public orm::TiOrm {
     TiClientState state;
     sqlite3 *dbhandle;
-    std::string userid;
+    std::string userid, token;
 
   public:
-    TiClient(std::string addr, short port, std::string dbfile);
+    TiClient(std::string addr, short port, const std::string& dbfile);
     ~TiClient();
-    VerificationResult user_login(std::string name, std::string password);
-    bool user_reg(std::string name, std::string password);
+    TiClientState get_state();
+    VerificationResult user_login(const std::string& name, const std::string& password);
+    bool user_reg(const std::string& name, const std::string& password);
     bool user_logout();
     std::vector<User *> get_current_user() const;
     std::vector<Entity *> get_contacts() const;
-    Entity *get_entity(std::string id) const;
     void send(Message *message);
     void on_connect(sockaddr_in serveraddr) override;
     void on_message(char *data, size_t len) override;

@@ -1,5 +1,6 @@
-#include "protocol.hpp"
-#include "log.hpp"
+#include "ti.h"
+#include "log.h"
+#include <sstream>
 
 #define BUFFER_SIZE 3
 
@@ -26,6 +27,14 @@ size_t ti::read_len_header(char *tsize) {
     return msize;
 }
 
+std::string write_entities(std::vector<Entity *> entities) {
+    std::stringstream ss;
+    std::transform(entities.begin(), entities.end(),
+                   std::ostream_iterator<std::string>(ss, ","),
+                   [&](Entity *e) { return e->get_id(); });
+    return ss.str();
+}
+
 bool Entity::operator==(const Entity &other) const {
     return other.get_id() == get_id();
 }
@@ -33,8 +42,9 @@ bool Entity::operator==(const Entity &other) const {
 Server::Server() = default;
 std::string Server::get_id() const { return "zGuEzyj3EUyeSKAvHw3Zo"; }
 
-User::User(std::string id, std::string name)
-    : id(std::move(id)), name(std::move(name)) {}
+User::User(const std::string &id, const std::string &name,
+           const std::string &bio)
+    : id(id), name(name), bio(bio) {}
 std::string User::get_id() const { return id; }
 std::string User::get_name() const { return name; }
 
@@ -228,9 +238,7 @@ void SqlDatabase::exec_sql_no_result(const std::string &expr) const {
         throw std::runtime_error(m);
     }
 }
-int SqlDatabase::get_changes() const {
-    return sqlite3_changes(dbhandle);
-}
+int SqlDatabase::get_changes() const { return sqlite3_changes(dbhandle); }
 SqlTransaction *SqlDatabase::prepare(const std::string &expr) const {
     return new SqlTransaction(expr, dbhandle);
 }
@@ -270,7 +278,8 @@ TiOrm::TiOrm(const std::string &dbfile) : SqlDatabase(dbfile) {
     exec_sql_no_result(
         "CREATE TABLE IF NOT EXISTS \"user\"\n"
         "(\n    id   varchar(21) primary key not null,\n"
-        "    name varchar                 not null\n"
+        "    name varchar                 not null,\n"
+        "    bio  varchar                 not null\n"
         ");\n"
         "CREATE TABLE IF NOT EXISTS \"group\"\n"
         "(\n"
@@ -289,7 +298,7 @@ TiOrm::TiOrm(const std::string &dbfile) : SqlDatabase(dbfile) {
         "    frames_id    varchar                 not null,\n"
         "    time         datetime                not null,\n"
         "    sender_id    varchar(21)             not null,\n"
-        "    receiver_id  varchar(21)             not null,\n    "
+        "    receiver_id  varchar(21)             not null,\n"
         "    forwarded_id varchar(21)             not null\n"
         ");\n"
         "");
@@ -300,7 +309,7 @@ void TiOrm::pull() {
     auto t = exec_sql("SELECT * FROM \"user\"");
     for (int i = 0; i < t->height; ++i) {
         auto row = t->rows[i];
-        entities.push_back(new User(row[0], row[1]));
+        entities.push_back(new User(row[0], row[1], row[2]));
     }
     delete t;
     t = exec_sql("SELECT * FROM \"group\"");
@@ -356,6 +365,21 @@ User *TiOrm::get_user(const std::string &id) const {
         }
     }
     return nullptr;
+}
+void TiOrm::add_entity(Entity *entity) {
+    entities.push_back(entity);
+    if (auto *u = dynamic_cast<User *>(entity)) {
+        auto t = prepare("INSERT INTO user VALUES (?, ?)");
+        t->bind_text(0, u->get_id());
+        t->bind_text(1, u->get_name());
+    } else if (auto *g = dynamic_cast<Group *>(entity)) {
+        auto t = prepare("INSERT INTO \"group\" VALUES (?, ?, ?)");
+        t->bind_text(0, g->get_id());
+        t->bind_text(1, g->get_name());
+        t->bind_text(2, write_entities(g->get_members()));
+    } else {
+        throw std::runtime_error("entity type not implemented");
+    }
 }
 std::vector<Entity *> TiOrm::get_entities() const { return entities; }
 Entity *TiOrm::get_entity(const std::string &id) const {

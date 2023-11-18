@@ -1,7 +1,7 @@
+#include "log.h"
+#include "ti_server.h"
 #include <csignal>
 #include <iostream>
-#include <server/behavior.hpp>
-#include <log.hpp>
 
 using ti::server::TiServer;
 
