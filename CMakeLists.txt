@@ -35,7 +35,7 @@ target_link_libraries(ti_client TiClient)
 enable_testing()
 file(GLOB TEST_SOURCES "${SRC_DIR}/test/*.cc")
 add_executable(ti_test ${TEST_SOURCES})
-target_link_libraries(ti_test GTest::gtest_main)
+target_link_libraries(ti_test GTest::gtest_main TiServer TiClient NanoId)
 
 include(GoogleTest)
 gtest_discover_tests(ti_test)
