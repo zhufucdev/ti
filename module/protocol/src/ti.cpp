@@ -32,7 +32,9 @@ std::string write_entities(std::vector<Entity *> entities) {
     std::transform(entities.begin(), entities.end(),
                    std::ostream_iterator<std::string>(ss, ","),
                    [&](Entity *e) { return e->get_id(); });
-    return ss.str();
+    auto str = ss.str();
+    str = str.substr(0, str.length() - 1);
+    return str;
 }
 
 bool Entity::operator==(const Entity &other) const {
@@ -47,6 +49,7 @@ User::User(const std::string &id, const std::string &name,
     : id(id), name(name), bio(bio) {}
 std::string User::get_id() const { return id; }
 std::string User::get_name() const { return name; }
+std::string User::get_bio() const { return bio; }
 
 Group::Group(std::string id, std::string name, std::vector<Entity *> members)
     : id(std::move(id)), name(std::move(name)), members(std::move(members)) {}
@@ -69,37 +72,39 @@ std::string Message::get_id() const { return id; }
 Entity &Message::get_sender() const { return *sender; }
 Entity &Message::get_receiver() const { return *receiver; }
 
-SqlTransaction::SqlTransaction(const std::string &expr, sqlite3 *db) {
+SqlTransaction::SqlTransaction(const std::string &expr, sqlite3 *db)
+    : closed(false) {
     int n =
         sqlite3_prepare_v2(db, expr.c_str(), expr.length(), &handle, nullptr);
     if (n != SQLITE_OK) {
         throw std::runtime_error("Invalid SQL expression");
     }
 }
-SqlTransaction::~SqlTransaction() { sqlite3_finalize(handle); }
+SqlTransaction::~SqlTransaction() { close(); }
 void SqlTransaction::throw_on_fail(int code) {
     if (code != SQLITE_OK) {
-        throw std::runtime_error("Bind failed");
+        logD("[transition] bind failed with code %d", code);
+        throw std::runtime_error("bind failed");
     }
 }
 void SqlTransaction::bind_text(int pos, const std::string &text) {
-    throw_on_fail(
-        sqlite3_bind_text(handle, pos, text.c_str(), text.length(), nullptr));
+    throw_on_fail(sqlite3_bind_text(handle, pos + 1, text.c_str(),
+                                    text.length(), nullptr));
 }
 void SqlTransaction::bind_int(int pos, const int n) {
-    throw_on_fail(sqlite3_bind_int(handle, pos, n));
+    throw_on_fail(sqlite3_bind_int(handle, pos + 1, n));
 }
 void SqlTransaction::bind_int64(int pos, const long n) {
-    throw_on_fail(sqlite3_bind_int64(handle, pos, n));
+    throw_on_fail(sqlite3_bind_int64(handle, pos + 1, n));
 }
 void SqlTransaction::bind_double(int pos, double n) {
-    throw_on_fail(sqlite3_bind_double(handle, pos, n));
+    throw_on_fail(sqlite3_bind_double(handle, pos + 1, n));
 }
 void SqlTransaction::bind_null(int pos) {
-    throw_on_fail(sqlite3_bind_null(handle, pos));
+    throw_on_fail(sqlite3_bind_null(handle, pos + 1));
 }
 void SqlTransaction::bind_blob(int pos, void *blob, int nbytes) {
-    throw_on_fail(sqlite3_bind_blob(handle, pos, blob, nbytes, nullptr));
+    throw_on_fail(sqlite3_bind_blob(handle, pos + 1, blob, nbytes, nullptr));
 }
 SqlTransaction::RowIterator SqlTransaction::begin() {
     return SqlTransaction::RowIterator(handle, false);
@@ -107,12 +112,20 @@ SqlTransaction::RowIterator SqlTransaction::begin() {
 SqlTransaction::RowIterator SqlTransaction::end() {
     return SqlTransaction::RowIterator(handle, true);
 }
+void SqlTransaction::close() {
+    if (!closed) {
+        sqlite3_finalize(handle);
+        closed = true;
+    }
+}
 
 SqlTransaction::RowIterator::RowIterator(sqlite3_stmt *handle, bool end)
-    : handle(handle), rc(end ? SQLITE_DONE : SQLITE_ROW), row(handle) {
+    : handle(handle), row(handle) {
     if (end) {
-        count = sqlite3_data_count(handle);
+        rc = SQLITE_DONE;
+        count = -1;
     } else {
+        rc = sqlite3_step(handle);
         count = 0;
     }
 }
@@ -128,7 +141,8 @@ SqlTransaction::RowIterator SqlTransaction::RowIterator::operator++(int) {
 }
 bool SqlTransaction::RowIterator::operator==(
     ti::orm::SqlTransaction::RowIterator other) const {
-    return handle == other.handle && count == other.count;
+    return handle == other.handle &&
+           (other.count < 0 && rc == SQLITE_DONE || count == other.count);
 }
 bool SqlTransaction::RowIterator::operator!=(
     ti::orm::SqlTransaction::RowIterator other) const {
@@ -155,13 +169,11 @@ long Row::get_int64(int col) const { return sqlite3_column_int64(handle, col); }
 int Row::get_type(int col) const { return sqlite3_column_type(handle, col); }
 std::string Row::get_text(int col) const {
     const unsigned char *s = sqlite3_column_text(handle, col);
+    if (s == nullptr) {
+        throw std::overflow_error("column index overflow");
+    }
     return reinterpret_cast<const char *>(s);
 }
-
-typedef struct {
-    Table *table;
-    int cap;
-} TableProcessor;
 
 SqlDatabase::SqlDatabase(const std::string &dbfile) : is_cpy(false) {
     int n = sqlite3_open(dbfile.c_str(), &dbhandle);
@@ -179,58 +191,7 @@ SqlDatabase::~SqlDatabase() {
     }
 }
 
-int callback(void *t, int argc, char **argv, char **azColName) {
-    auto *tp = (TableProcessor *)t;
-    auto tt = tp->table;
-    if (tt->width <= 0) {
-        tt->width = argc;
-    }
-    if (tt->columns == nullptr) {
-        tt->columns = (std::string *)malloc(sizeof(std::string *) * argc);
-        for (int i = 0; i < argc; ++i) {
-            tt->columns[i] = std::string(azColName[i]);
-        }
-    }
-
-    if (tp->cap <= tt->height) {
-        if (tt->rows == nullptr) {
-            tt->rows = (std::string **)calloc(tp->cap, sizeof(std::string *));
-        } else {
-            tt->rows = (std::string **)realloc(tt->rows,
-                                               sizeof(std::string *) * tp->cap);
-            if (tt->rows == nullptr) {
-                throw std::runtime_error("realloc() failed");
-            }
-        }
-        tp->cap += BUFFER_SIZE;
-    }
-    tt->rows[tt->height] = (std::string *)malloc(sizeof(std::string *));
-    for (int i = 0; i < argc; ++i) {
-        tt->rows[tt->height][i] = std::string(argv[i]);
-    }
-    tt->height++;
-    return 0;
-}
-Table *SqlDatabase::exec_sql(const std::string &expr) const {
-    auto *tt = (Table *)malloc(sizeof(Table));
-    tt->height = 0;
-    tt->width = 0;
-    tt->rows = nullptr;
-    tt->columns = nullptr;
-    auto *tp = (TableProcessor *)malloc(sizeof(TableProcessor));
-    tp->table = tt;
-    tp->cap = 0;
-    char *err = nullptr;
-    int n = sqlite3_exec(dbhandle, expr.c_str(), callback, tp, &err);
-    if (n == SQLITE_OK) {
-        return tt;
-    } else {
-        auto m = std::string(err);
-        sqlite3_free(err);
-        throw std::runtime_error(m);
-    }
-}
-void SqlDatabase::exec_sql_no_result(const std::string &expr) const {
+void SqlDatabase::exec_sql(const std::string &expr) const {
     char *err;
     int n = sqlite3_exec(dbhandle, expr.c_str(), nullptr, nullptr, &err);
     if (n != SQLITE_OK) {
@@ -259,93 +220,92 @@ T *get_entity_in(const std::vector<T *> &vec, const std::string &id) {
     }
     throw std::runtime_error("specific entity not found");
 }
-template <typename T, typename F>
-std::vector<T> maps(const std::string &str, const char separator,
-                    F mapping_fn) {
-    std::vector<T> ss;
-    int j, k;
-    for (j = 0, k = 0; j < str.length(); ++j) {
-        if (str[j] == separator) {
-            auto curr = str.substr(k, j);
-            k = j + 1;
-            ss.push_back(mapping_fn(curr));
-        }
-    }
-    return ss;
-}
 TiOrm::TiOrm(const std::string &dbfile) : SqlDatabase(dbfile) {
     logD("[orm] executing initializing SQL");
-    exec_sql_no_result(
-        "CREATE TABLE IF NOT EXISTS \"user\"\n"
-        "(\n    id   varchar(21) primary key not null,\n"
-        "    name varchar                 not null,\n"
-        "    bio  varchar                 not null\n"
-        ");\n"
-        "CREATE TABLE IF NOT EXISTS \"group\"\n"
-        "(\n"
-        "    id         varchar(21) primary key not null,\n"
-        "    name       varchar                 not null,\n"
-        "    members_id varchar                 not null\n"
-        ");\n"
-        "CREATE TABLE IF NOT EXISTS \"text_frame\"\n"
-        "(\n"
-        "    id      varchar(21) primary key not null,\n"
-        "    content varchar                 not null\n"
-        ");\n"
-        "CREATE TABLE IF NOT EXISTS \"message\"\n"
-        "(\n"
-        "    id           varchar(21) primary key not null,\n"
-        "    frames_id    varchar                 not null,\n"
-        "    time         datetime                not null,\n"
-        "    sender_id    varchar(21)             not null,\n"
-        "    receiver_id  varchar(21)             not null,\n"
-        "    forwarded_id varchar(21)             not null\n"
-        ");\n"
-        "");
+    exec_sql("CREATE TABLE IF NOT EXISTS \"user\"\n"
+             "(\n    id   varchar(21) primary key not null,\n"
+             "    name varchar                 not null,\n"
+             "    bio  varchar                 not null\n"
+             ");\n"
+             "CREATE TABLE IF NOT EXISTS \"group\"\n"
+             "(\n"
+             "    id   varchar(21) primary key not null,\n"
+             "    name varchar                 not null,\n"
+             "    foreign key (id)\n"
+             "        references box (container_id)\n"
+             "        on delete cascade\n"
+             ""
+             ");\n"
+             "CREATE TABLE IF NOT EXISTS \"text_frame\"\n"
+             "(\n"
+             "    id      varchar(21) primary key not null,\n"
+             "    content varchar                 not null\n"
+             ");\n"
+             "CREATE TABLE IF NOT EXISTS \"message\"\n"
+             "(\n"
+             "    id           varchar(21) primary key not null,\n"
+             "    frames_id    varchar                 not null,\n"
+             "    time         datetime                not null,\n"
+             "    sender_id    varchar(21)             not null,\n"
+             "    receiver_id  varchar(21)             not null,\n"
+             "    forwarded_id varchar(21)             not null\n"
+             ");\n"
+             "CREATE TABLE IF NOT EXISTS \"box\"\n"
+             "(\n"
+             "    id           integer primary key,\n"
+             "    container_id varchar(21) not null,\n"
+             "    contained_id varchar(21) not null,\n"
+             "    unique (contained_id, container_id)\n"
+             ");");
 }
 void TiOrm::pull() {
     entities.clear();
     entities.push_back(new Server());
-    auto t = exec_sql("SELECT * FROM \"user\"");
-    for (int i = 0; i < t->height; ++i) {
-        auto row = t->rows[i];
-        entities.push_back(new User(row[0], row[1], row[2]));
+    auto t = prepare(R"(SELECT * FROM "user")");
+    for (auto row : *t) {
+        entities.push_back(
+            new User(row.get_text(0), row.get_text(1), row.get_text(2)));
     }
     delete t;
-    t = exec_sql("SELECT * FROM \"group\"");
-    for (int i = 0; i < t->height; ++i) {
-        auto row = t->rows[i];
-        auto ms = row[2];
-        auto members = maps<Entity *>(ms, ',', [&](std::string &id) {
-            return get_entity_in(entities, id);
-        });
-        entities.push_back(new Group(row[0], row[1], members));
+
+    t = prepare(R"(SELECT id, name FROM "group")");
+    for (auto row : *t) {
+        auto tr = prepare(
+            R"(SELECT "contained_id" FROM "box" WHERE container_id = ?)");
+        tr->bind_text(0, row.get_text(0));
+        std::vector<Entity *> members;
+        std::transform(
+            tr->begin(), tr->end(), std::back_inserter(members),
+            [&](Row r) { return get_entity_in(entities, r.get_text(0)); });
+        entities.push_back(
+            new Group(row.get_text(0), row.get_text(1), members));
     }
     delete t;
 
     frames.clear();
-    t = exec_sql("SELECT * FROM \"text_frame\"");
-    for (int i = 0; i < t->height; ++i) {
-        auto row = t->rows[i];
-        frames.push_back(new TextFrame(row[0], row[1]));
+    t = prepare(R"(SELECT * FROM "text_frame")");
+    for (auto row : *t) {
+        frames.push_back(new TextFrame(row.get_text(0), row.get_text(1)));
     }
     delete t;
 
     messages.clear();
-    auto tr = prepare("SELECT * FROM \"message\"");
-    for (auto row : *tr) {
-        auto fs = row.get_text(1);
-        auto content =
-            maps<Frame *>(row.get_text(1), ',', [&](std::string &id) {
-                return get_entity_in(frames, id);
-            });
+    t = prepare(R"(SELECT * FROM "message")");
+    for (auto row : *t) {
+        std::vector<Frame *> content;
+        auto tr =
+            prepare(R"(SELECT contained_id FROM "box" WHERE container_id = ?)");
+        tr->bind_text(0, row.get_text(0));
+        std::transform(
+            tr->begin(), tr->end(), std::back_inserter(content),
+            [&](Row r) { return get_entity_in(frames, r.get_text(0)); });
         messages.push_back(
             new Message(row.get_text(0), content, row.get_int64(2),
                         get_entity_in(entities, row.get_text(3)),
                         get_entity_in(entities, row.get_text(4)),
                         get_entity_in(entities, row.get_text(5))));
     }
-    delete tr;
+    delete t;
 }
 TiOrm::~TiOrm() = default;
 std::vector<User *> TiOrm::get_users() const {
@@ -369,25 +329,31 @@ User *TiOrm::get_user(const std::string &id) const {
 void TiOrm::add_entity(Entity *entity) {
     entities.push_back(entity);
     if (auto *u = dynamic_cast<User *>(entity)) {
-        auto t = prepare("INSERT INTO user VALUES (?, ?)");
+        auto t = prepare(R"(INSERT INTO "user" VALUES (?, ?, ?))");
         t->bind_text(0, u->get_id());
         t->bind_text(1, u->get_name());
+        t->bind_text(2, u->get_bio());
+        t->begin();
+        delete t;
     } else if (auto *g = dynamic_cast<Group *>(entity)) {
-        auto t = prepare("INSERT INTO \"group\" VALUES (?, ?, ?)");
+        auto t = prepare(R"(INSERT INTO "group" VALUES (?, ?))");
         t->bind_text(0, g->get_id());
         t->bind_text(1, g->get_name());
-        t->bind_text(2, write_entities(g->get_members()));
+        t->begin();
+        for (auto m : g->get_members()) {
+            t = prepare(
+                R"(INSERT INTO "box"(container_id, contained_id) VALUES (?, ?))");
+            t->bind_text(0, g->get_id());
+            t->bind_text(1, m->get_id());
+            t->begin();
+        }
+        delete t;
     } else {
         throw std::runtime_error("entity type not implemented");
     }
 }
 std::vector<Entity *> TiOrm::get_entities() const { return entities; }
 Entity *TiOrm::get_entity(const std::string &id) const {
-    for (auto e : entities) {
-        if (e->get_id() == id) {
-            return e;
-        }
-    }
-    return nullptr;
+    return get_entity_in(entities, id);
 }
 const std::vector<Message *> &TiOrm::get_messages() const { return messages; }

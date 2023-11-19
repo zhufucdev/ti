@@ -7,31 +7,32 @@ using namespace ti;
 
 ServerOrm::ServerOrm(const std::string &dbfile) : TiOrm(dbfile) {
     logD("[server orm] executing initializing SQL");
-    exec_sql_no_result("CREATE TABLE IF NOT EXISTS \"password\"\n(\n"
-                       "    user_id varchar(21) primary key not null,\n"
-                       "    hash    blob                    not null,\n"
-                       "    FOREIGN KEY (user_id)\n"
-                       "        REFERENCES user (id)\n"
-                       "        ON DELETE CASCADE\n"
-                       ");\n"
-                       "CREATE TABLE IF NOT EXISTS \"token\"\n"
-                       "(\n"
-                       "    id         int primary key,\n"
-                       "    user_id    varchar(21) not null,\n"
-                       "    token      varchar(21) not null,\n"
-                       "    identifier varchar     not null,\n"
-                       "    FOREIGN KEY (user_id)\n"
-                       "        REFERENCES user (id)\n"
-                       "        ON DELETE CASCADE\n"
-                       ");\n"
-                       "CREATE TABLE IF NOT EXISTS \"contact\"\n"
-                       "(\n"
-                       "    id         integer primary key,\n"
-                       "    owner_id   varchar(21) not null,\n"
-                       "    contact_id varchar(21) not null\n"
-                       ");\n");
+    exec_sql("CREATE TABLE IF NOT EXISTS \"password\"\n(\n"
+             "    user_id varchar(21) primary key not null,\n"
+             "    hash    blob                    not null,\n"
+             "    FOREIGN KEY (user_id)\n"
+             "        REFERENCES user (id)\n"
+             "        ON DELETE CASCADE\n"
+             ");\n"
+             "CREATE TABLE IF NOT EXISTS \"token\"\n"
+             "(\n"
+             "    id         int primary key,\n"
+             "    user_id    varchar(21) not null,\n"
+             "    token      varchar(21) not null,\n"
+             "    identifier varchar     not null,\n"
+             "    FOREIGN KEY (user_id)\n"
+             "        REFERENCES user (id)\n"
+             "        ON DELETE CASCADE\n"
+             ");\n"
+             "CREATE TABLE IF NOT EXISTS \"contact\"\n"
+             "(\n"
+             "    id         integer primary key,\n"
+             "    owner_id   varchar(21) not null,\n"
+             "    contact_id varchar(21) not null\n"
+             ");\n");
 }
 void ServerOrm::pull() {
+    orm::TiOrm::pull();
     contacts.clear();
     auto t = prepare("SELECT * FROM \"contact\"");
     for (auto e : *t) {
@@ -59,11 +60,11 @@ std::vector<Entity *> ServerOrm::get_contacts(const User &owner) const {
 int ServerOrm::get_password(const std::string &user_id,
                             const void **buf) const {
     auto t = prepare("SELECT hash FROM password WHERE user_id = ?");
-    t->bind_text(0, user_id);
+    t->bind_text(1, user_id);
     if (t->begin() == t->end()) {
         return 0;
     }
-    auto n = (*t->begin()).get_blob(0, buf);
+    auto n = (*t->begin()).get_blob(1, buf);
     delete t;
     return n;
 }

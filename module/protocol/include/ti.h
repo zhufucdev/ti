@@ -51,6 +51,7 @@ class User : public Entity {
 
     std::string get_id() const override;
     std::string get_name() const;
+    std::string get_bio() const;
 };
 
 class Group : public Entity {
@@ -112,12 +113,6 @@ enum ResponseCode {
 };
 
 namespace orm {
-typedef struct {
-    int height, width;
-    std::string *columns;
-    std::string **rows;
-} Table;
-
 class Row {
     sqlite3_stmt *handle;
 
@@ -134,6 +129,7 @@ class Row {
 
 class SqlTransaction {
     sqlite3_stmt *handle;
+    bool closed;
     static void throw_on_fail(int code);
 
   public:
@@ -145,6 +141,7 @@ class SqlTransaction {
     void bind_blob(int pos, void *blob, int nbytes);
     void bind_double(int pos, double n);
     void bind_null(int pos);
+    void close();
 
     class RowIterator : public std::iterator<std::input_iterator_tag, Row, int,
                                              const Row *, const Row &> {
@@ -165,7 +162,7 @@ class SqlTransaction {
 };
 
 /**
- * C++ wrapper for SQLite 3 C API
+ * Wrapper for SQLite 3 C API
  */
 class SqlDatabase {
     sqlite3 *dbhandle;
@@ -173,8 +170,7 @@ class SqlDatabase {
 
   protected:
     SqlTransaction *prepare(const std::string &expr) const;
-    Table *exec_sql(const std::string &expr) const;
-    void exec_sql_no_result(const std::string &expr) const;
+    void exec_sql(const std::string &expr) const;
     int get_changes() const;
 
   public:
