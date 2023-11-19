@@ -1,5 +1,5 @@
-#include <string>
 #include <sqlite3.h>
+#include <string>
 #include <vector>
 
 #define BYTES_LEN_HEADER 8
@@ -30,6 +30,8 @@ const std::string version = "0.1";
 
 char *write_len_header(size_t len);
 size_t read_len_header(char *tsize);
+std::string to_iso_time(const std::time_t &time);
+std::time_t parse_iso_time(const std::string& str);
 
 class Entity {
   public:
@@ -47,7 +49,8 @@ class User : public Entity {
     std::string name, id, bio;
 
   public:
-    User(const std::string &id, const std::string &name, const std::string &bio);
+    User(const std::string &id, const std::string &name,
+         const std::string &bio);
 
     std::string get_id() const override;
     std::string get_name() const;
@@ -93,8 +96,10 @@ class Message {
             Entity *sender, Entity *receiver, Entity *forwared_from);
     const std::vector<Frame *> &get_frames() const;
     std::string get_id() const;
-    Entity &get_sender() const;
-    Entity &get_receiver() const;
+    Entity *get_sender() const;
+    Entity *get_receiver() const;
+    Entity *get_forward_source() const;
+    std::time_t get_time() const;
 };
 
 enum RequestCode {
@@ -104,13 +109,7 @@ enum RequestCode {
     RECONNECT,
     DETERMINE,
 };
-enum ResponseCode {
-    OK = 0,
-    NOT_FOUND,
-    BAD_REQUEST,
-    TOKEN_EXPIRED,
-    MESSAGE
-};
+enum ResponseCode { OK = 0, NOT_FOUND, BAD_REQUEST, TOKEN_EXPIRED, MESSAGE };
 
 namespace orm {
 class Row {
@@ -185,6 +184,7 @@ class TiOrm : public SqlDatabase {
     std::vector<Entity *> entities;
     std::vector<Frame *> frames;
     std::vector<Message *> messages;
+
   public:
     explicit TiOrm(const std::string &dbfile);
     TiOrm(const TiOrm &t);
@@ -195,7 +195,10 @@ class TiOrm : public SqlDatabase {
     void add_entity(Entity *entity);
     std::vector<Entity *> get_entities() const;
     Entity *get_entity(const std::string &id) const;
-    const std::vector<Message *> &get_messages() const;
+    void add_frames(const std::vector<Frame *>& frm, Message *parent = nullptr);
+    std::vector<Message *> get_messages() const;
+    Message *get_message(const std::string &id);
+    void add_message(Message *msg);
 };
 } // namespace orm
 } // namespace ti

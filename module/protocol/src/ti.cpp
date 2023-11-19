@@ -2,8 +2,6 @@
 #include "log.h"
 #include <sstream>
 
-#define BUFFER_SIZE 3
-
 using namespace ti;
 using namespace orm;
 
@@ -25,6 +23,18 @@ size_t ti::read_len_header(char *tsize) {
         msize |= tsize[n++];
     }
     return msize;
+}
+
+std::string ti::to_iso_time(const std::time_t &time) {
+    char buf[sizeof "2011-10-08T07:07:09Z"];
+    strftime(buf, sizeof buf, "%FT%TZ", gmtime(&time));
+    return buf;
+}
+
+std::time_t ti::parse_iso_time(const std::string &str) {
+    std::tm tm{};
+    strptime(str.c_str(), "%FT%TZ", &tm);
+    return timegm(&tm);
 }
 
 std::string write_entities(std::vector<Entity *> entities) {
@@ -69,8 +79,10 @@ Message::Message(std::string id, std::vector<Frame *> content, std::time_t time,
       receiver(receiver), forwarded_from(forwared_from) {}
 const std::vector<Frame *> &Message::get_frames() const { return frames; }
 std::string Message::get_id() const { return id; }
-Entity &Message::get_sender() const { return *sender; }
-Entity &Message::get_receiver() const { return *receiver; }
+Entity *Message::get_sender() const { return sender; }
+Entity *Message::get_receiver() const { return receiver; }
+Entity *Message::get_forward_source() const { return forwarded_from; }
+std::time_t Message::get_time() const { return time; }
 
 SqlTransaction::SqlTransaction(const std::string &expr, sqlite3 *db)
     : closed(false) {
@@ -244,7 +256,6 @@ TiOrm::TiOrm(const std::string &dbfile) : SqlDatabase(dbfile) {
              "CREATE TABLE IF NOT EXISTS \"message\"\n"
              "(\n"
              "    id           varchar(21) primary key not null,\n"
-             "    frames_id    varchar                 not null,\n"
              "    time         datetime                not null,\n"
              "    sender_id    varchar(21)             not null,\n"
              "    receiver_id  varchar(21)             not null,\n"
@@ -299,11 +310,11 @@ void TiOrm::pull() {
         std::transform(
             tr->begin(), tr->end(), std::back_inserter(content),
             [&](Row r) { return get_entity_in(frames, r.get_text(0)); });
-        messages.push_back(
-            new Message(row.get_text(0), content, row.get_int64(2),
-                        get_entity_in(entities, row.get_text(3)),
-                        get_entity_in(entities, row.get_text(4)),
-                        get_entity_in(entities, row.get_text(5))));
+        messages.push_back(new Message(
+            row.get_text(0), content, parse_iso_time(row.get_text(1)),
+            get_entity_in(entities, row.get_text(2)),
+            get_entity_in(entities, row.get_text(3)),
+            get_entity_in(entities, row.get_text(4))));
     }
     delete t;
 }
@@ -356,4 +367,40 @@ std::vector<Entity *> TiOrm::get_entities() const { return entities; }
 Entity *TiOrm::get_entity(const std::string &id) const {
     return get_entity_in(entities, id);
 }
-const std::vector<Message *> &TiOrm::get_messages() const { return messages; }
+void TiOrm::add_frames(const std::vector<Frame *> &frm, Message *parent) {
+    for (auto f : frm) {
+        frames.push_back(f);
+        if (parent != nullptr) {
+            auto t = prepare(R"(INSERT INTO "box"(container_id, contained_id) VALUES (?, ?))");
+            t->bind_text(0, parent->get_id());
+            t->bind_text(1, f->get_id());
+            t->begin();
+            delete t;
+        }
+        if (auto *tf = dynamic_cast<TextFrame *>(f)) {
+            auto t = prepare(R"(INSERT INTO "text_frame" VALUES (?, ?))");
+            t->bind_text(0, tf->get_id());
+            t->bind_text(1, tf->to_string());
+            t->begin();
+            delete t;
+        } else {
+            throw std::runtime_error("unimplemented frame type");
+        }
+    }
+}
+std::vector<Message *> TiOrm::get_messages() const { return messages; }
+Message *TiOrm::get_message(const std::string &id) {
+    return get_entity_in(messages, id);
+}
+void TiOrm::add_message(ti::Message *msg) {
+    messages.push_back(msg);
+    add_frames(msg->get_frames(), msg);
+    auto t = prepare(R"(INSERT INTO "message" VALUES (?, ?, ?, ?, ?))");
+    t->bind_text(0, msg->get_id());
+    t->bind_text(1, to_iso_time(msg->get_time()));
+    t->bind_text(2, msg->get_sender()->get_id());
+    t->bind_text(3, msg->get_receiver()->get_id());
+    t->bind_text(4, msg->get_receiver()->get_id());
+    t->begin();
+    delete t;
+}

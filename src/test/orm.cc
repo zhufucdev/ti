@@ -64,3 +64,22 @@ TEST_F(ServerOrmTest, AddGroup) {
     delete g;
     delete gb;
 }
+
+TEST_F(ServerOrmTest, AddMessage) {
+    time_t now;
+    time(&now);
+    sorm->add_user(&testificate_man, nanoid::generate());
+    sorm->add_user(&testificate_woman, nanoid::generate());
+    std::vector<ti::Frame *> frames = {
+        new ti::TextFrame(nanoid::generate(), "Hi I'm John Cena"),
+        new ti::TextFrame(nanoid::generate(), "I like bing chilling")};
+    auto msg = new ti::Message(nanoid::generate(), frames, now,
+                               &testificate_man, &testificate_woman, nullptr);
+    sorm->add_message(msg);
+
+    sorm->pull();
+    auto m = sorm->get_message(msg->get_id());
+    ASSERT_EQ(m->get_time(), now);
+    ASSERT_EQ(m->get_frames().size(), frames.size());
+    ASSERT_EQ(m->get_frames()[0]->get_id(), frames[0]->get_id());
+}
