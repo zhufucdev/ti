@@ -10,7 +10,7 @@ class ServerOrm : public orm::TiOrm {
     explicit ServerOrm(const std::string &dbfile);
     void pull() override;
     std::vector<Entity *> get_contacts(const User &owner) const;
-    int get_password(const std::string &user_id, const void **buf) const;
+    bool check_password(const std::string &user_id, const std::string &passcode) const;
     User *check_token(const std::string &token) const;
     void add_token(ti::User *owner, const std::string &token);
     bool invalidate_token(int token_id, User *owner = nullptr);

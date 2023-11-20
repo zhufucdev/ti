@@ -7,7 +7,6 @@
 #include <intrin.h>
 #endif
 
-#include <immintrin.h>
 #if defined(__XOP__) && (defined(__GNUC__) || defined(__clang__))
 #include <x86intrin.h>
 #endif
@@ -36,11 +35,6 @@
 #endif
 #else
 #endif
-
-static BLAKE2_INLINE __m128i fBlaMka(__m128i x, __m128i y) {
-    const __m128i z = _mm_mul_epu32(x, y);
-    return _mm_add_epi64(_mm_add_epi64(x, y), _mm_add_epi64(z, z));
-}
 
 #define G1(A0, B0, C0, D0, A1, B1, C1, D1)                                     \
     do {                                                                       \

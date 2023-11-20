@@ -1,9 +1,22 @@
 #include "ti_server.h"
-#include "log.h"
-#include "nanoid.h"
+#include <argon2.h>
+#include <log.h>
+#include <nanoid.h>
+
+#define PASSWORD_HASH_BYTES 64
+#define PASSWORD_HASH_SALT "DIuL4dPTcL3q1a7EFOF9f"
+#define PASSWORD_HASH_SALT_LEN 21
 
 using namespace ti::server;
 using namespace ti;
+
+char *hash_password(std::string passcode) {
+    char *encryption = (char *)calloc(PASSWORD_HASH_BYTES, sizeof(char));
+    hash_argon2i(encryption, PASSWORD_HASH_BYTES, passcode.c_str(),
+                 passcode.length(), PASSWORD_HASH_SALT, PASSWORD_HASH_SALT_LEN,
+                 4, 1 << 16);
+    return encryption;
+}
 
 ServerOrm::ServerOrm(const std::string &dbfile) : TiOrm(dbfile) {
     logD("[server orm] executing initializing SQL");
@@ -57,16 +70,27 @@ std::vector<Entity *> ServerOrm::get_contacts(const User &owner) const {
     }
     return ev;
 }
-int ServerOrm::get_password(const std::string &user_id,
-                            const void **buf) const {
+bool ServerOrm::check_password(const std::string &user_id,
+                               const std::string &passcode) const {
     auto t = prepare("SELECT hash FROM password WHERE user_id = ?");
-    t->bind_text(1, user_id);
-    if (t->begin() == t->end()) {
-        return 0;
+    t->bind_text(0, user_id);
+    auto beg = t->begin();
+    if (beg == t->end()) {
+        return false;
     }
-    auto n = (*t->begin()).get_blob(1, buf);
+    const void *buf;
+    auto n = (*beg).get_blob(0, &buf);
+    if (n != PASSWORD_HASH_BYTES) {
+        throw std::runtime_error("corrupt password database");
+    }
+    auto hashed = hash_password(passcode);
+    for (int i = 0; i < PASSWORD_HASH_BYTES; ++i) {
+        if (hashed[i] != ((char *)buf)[i]) {
+            return false;
+        }
+    }
     delete t;
-    return n;
+    return true;
 }
 User *ServerOrm::check_token(const std::string &token) const {
     for (const auto &t : tokens) {
@@ -122,9 +146,11 @@ void ServerOrm::add_user(ti::User *user, const std::string &passcode) {
     add_entity(user);
     auto t = prepare("INSERT INTO password VALUES (?, ?)");
     t->bind_text(0, user->get_id());
-    t->bind_blob(1, (void *)passcode.c_str(), passcode.size());
+    auto hash = hash_password(passcode);
+    t->bind_blob(1, (void *)hash, PASSWORD_HASH_BYTES);
     t->begin();
     delete t;
+    delete hash;
 }
 
 TiServer::TiServer(std::string addr, short port, const std::string &dbfile)
@@ -180,23 +206,16 @@ void TiClient::on_message(ti::RequestCode req, char *data, size_t len) {
 
 void TiClient::user_login(const std::string &user_id,
                           const std::string &password) {
-    const void *buf;
-    int n = db.get_password(user_id, &buf);
-    if (n > 0) {
-        if (strcmp((const char *)buf, password.c_str()) == 0) {
-            if ((user = db.get_user(user_id))) {
-                auto res_buf = (char *)calloc(21, sizeof(char));
-                token = nanoid::generate();
-                strcpy(res_buf, token.c_str());
-                send(ResponseCode::OK, res_buf, sizeof res_buf);
-                db.add_token(user, token);
-                logD("[client %s] logged in as %s", id.c_str(),
-                     user_id.c_str());
-                return;
-            }
-        }
+    if (db.check_password(user_id, password)) {
+        auto res_buf = (char *)calloc(21, sizeof(char));
+        token = nanoid::generate();
+        strcpy(res_buf, token.c_str());
+        send(ResponseCode::OK, res_buf, sizeof res_buf);
+        db.add_token(user, token);
+        logD("[client %s] logged in as %s", id.c_str(), user_id.c_str());
+    } else {
+        send(ResponseCode::NOT_FOUND, nullptr, 0);
     }
-    send(ResponseCode::NOT_FOUND, nullptr, 0);
 }
 
 void TiClient::reconnect(const std::string &old_token) {

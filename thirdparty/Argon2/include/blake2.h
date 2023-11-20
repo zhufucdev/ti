@@ -1,9 +1,9 @@
 #ifndef PORTABLE_BLAKE2_H
 #define PORTABLE_BLAKE2_H
 
-#include <cstddef>
-#include <cstdint>
-#include <climits>
+#include <stddef.h>
+#include <stdint.h>
+#include <limits.h>
 
 #if defined(__cplusplus)
 extern "C" {
