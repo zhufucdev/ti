@@ -4,7 +4,7 @@
 using namespace ti::server;
 
 void Client::initialize(SendFn fn) { sendfn = std::move(fn); }
-void Client::send(ti::ResponseCode res, char *content, size_t len) const {
+void Client::send(ti::ResponseCode res, void *content, size_t len) const {
     sendfn(res, content, len);
 }
 void Client::send(ti::ResponseCode res) const { sendfn(res, nullptr, 0); }
@@ -79,7 +79,7 @@ void Server::stop() {
 void Server::handleconn(sockaddr_in addr, int clientfd) {
     std::thread([&] {
         auto *handler = this->on_connect(addr);
-        handler->initialize([&](ResponseCode res, char *content, int len) {
+        handler->initialize([&](ResponseCode res, void *content, int len) {
             ti::server::Server::send(clientfd, res, content, len);
         });
         handler->on_connect(addr);
@@ -114,7 +114,7 @@ void Server::handleconn(sockaddr_in addr, int clientfd) {
     }).detach();
 }
 
-void Server::send(int clientfd, ResponseCode res, char *data, size_t len) {
+void Server::send(int clientfd, ResponseCode res, void *data, size_t len) {
     auto *tres = (char *)calloc(1, sizeof(char));
     tres[0] = res;
     ::send(clientfd, tres, sizeof(char), 0);

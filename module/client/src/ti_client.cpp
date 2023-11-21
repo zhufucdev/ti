@@ -33,13 +33,14 @@ bool TiClient::user_login(const std::string &user_id,
         panic_unknown_res("login", res.code);
     }
 }
-bool TiClient::user_reg(const std::string &name, const std::string &password) {
+std::string TiClient::user_reg(const std::string &name,
+                               const std::string &password) {
     auto res = Client::send(RequestCode::REGISTER, name, password);
     switch (res.code) {
     case ResponseCode::BAD_REQUEST:
-        return false;
+        return std::string{};
     case ResponseCode::OK:
-        return true;
+        return {res.buff, (std::string::size_type)res.len};
     default:
         panic_unknown_res("registry", res.code);
     }

@@ -188,7 +188,8 @@ void TiClient::on_message(ti::RequestCode req, char *data, size_t len) {
     auto body = read_message_body(data, len);
     switch (req) {
     case LOGIN:
-        logD("[client %s] login(%s, %s)", id.c_str(), body[0].c_str(), body[1].c_str());
+        logD("[client %s] login(%s, %s)", id.c_str(), body[0].c_str(),
+             body[1].c_str());
         user_login(body[0], body[1]);
         break;
     case LOGOUT:
@@ -196,11 +197,13 @@ void TiClient::on_message(ti::RequestCode req, char *data, size_t len) {
         logout(body[0]);
         break;
     case REGISTER:
-        logD("[client %s] register(%s, %s)", id.c_str(), body[0].c_str(), body[1].c_str());
+        logD("[client %s] register(%s, %s)", id.c_str(), body[0].c_str(),
+             body[1].c_str());
         user_register(body[0], body[1]);
         break;
     case DETERMINE:
-        logD("[client %s] determine(%s, %s)", id.c_str(), body[0].c_str(), body[1].c_str());
+        logD("[client %s] determine(%s, %s)", id.c_str(), body[0].c_str(),
+             body[1].c_str());
         determine(body[0], std::stoi(body[1]));
         break;
     case RECONNECT:
@@ -221,7 +224,7 @@ void TiClient::user_login(const std::string &user_id,
         db.add_token(user, token);
         logD("[client %s] logged in as %s", id.c_str(), user_id.c_str());
     } else {
-        send(ResponseCode::NOT_FOUND, nullptr, 0);
+        send(ResponseCode::NOT_FOUND);
     }
 }
 
@@ -264,7 +267,7 @@ void TiClient::user_register(const std::string &user_name,
     } else {
         auto user_id = nanoid::generate();
         db.add_user(new User(user_id, user_name, {}), passcode);
-        send(ResponseCode::OK);
+        send(ResponseCode::OK, (void*)user_id.c_str(), user_id.length());
     }
 }
 

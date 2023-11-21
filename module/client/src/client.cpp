@@ -47,6 +47,7 @@ void Client::start() {
                 n = recv(socketfd, buff, msize, 0);
             } else {
                 buff = nullptr;
+                n = 0;
             }
             if (n < 0) {
                 break;
