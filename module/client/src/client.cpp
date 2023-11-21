@@ -109,7 +109,7 @@ Response Client::send(const RequestCode req_c, const void *data, size_t len) {
 Response Client::send(ti::RequestCode req_c, const std::string &content) {
     char *buf = (char *)calloc(req_len(content), sizeof(char));
     append_req_buffer(buf, content);
-    auto res = send(req_c, buf, sizeof buf);
+    auto res = send(req_c, buf, content.length());
     delete buf;
     return res;
 }
