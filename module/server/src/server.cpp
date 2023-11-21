@@ -24,7 +24,7 @@ void Server::start() {
     if (WSAStartup(MAKEWORD(2, 2), &wsaData) != 0) {
         throw std::runtime_error("failed to initialize winsock");
     }
-    socketfd = socket(AF_INET, SOCK_STREAM, 0);
+    socketfd = socket(PF_INET, SOCK_STREAM, 0);
     if (socketfd == INVALID_SOCKET) {
         WSACleanup();
         throw std::runtime_error("failed to create socket");
@@ -32,7 +32,7 @@ void Server::start() {
     sockaddr_in servaddr;
     ZeroMemory(&servaddr, sizeof(servaddr));
 #else
-    socketfd = socket(AF_INET, SOCK_STREAM, IPPROTO_IP);
+    socketfd = socket(PF_INET, SOCK_STREAM, IPPROTO_IP);
     if (socketfd < 0) {
         throw std::runtime_error("failed to create socket");
     }
@@ -40,9 +40,9 @@ void Server::start() {
     std::memset(&servaddr, 0, sizeof servaddr);
 #endif
 
-    servaddr.sin_family = AF_INET;
+    servaddr.sin_family = PF_INET;
     servaddr.sin_port = htons(port);
-    if (inet_pton(AF_INET, addr.c_str(), &servaddr.sin_addr) <= 0) {
+    if (inet_pton(PF_INET, addr.c_str(), &servaddr.sin_addr) <= 0) {
         throw std::runtime_error("invalid address");
     }
     if (bind(socketfd, (struct sockaddr *)&servaddr, sizeof servaddr) < 0) {
@@ -85,12 +85,11 @@ void Server::handleconn(sockaddr_in addr, int clientfd) {
         handler->on_connect(addr);
 
         char *tsize = (char *)calloc(BYTES_LEN_HEADER, sizeof(char)),
-             *buff = nullptr;
+             *treq = (char *)calloc(1, sizeof(char)), *buff = nullptr;
         size_t msize;
 
         while (true) {
-            char *treq = (char *)calloc(1, sizeof(char));
-            ssize_t n = recv(socketfd, treq, 1, 0);
+            ssize_t n = recv(clientfd, treq, 1, 0);
             if (n <= 0) {
                 break;
             }
@@ -119,12 +118,12 @@ void Server::send(int clientfd, ResponseCode res, char *data, size_t len) {
     auto *tres = (char *)calloc(1, sizeof(char));
     tres[0] = res;
     ::send(clientfd, tres, sizeof(char), 0);
+    char *tsize = write_len_header(len);
+    ::send(clientfd, tsize, sizeof(char) * BYTES_LEN_HEADER, 0);
     if (len > 0) {
-        char *tsize = write_len_header(len);
-        ::send(clientfd, tsize, sizeof(char) * BYTES_LEN_HEADER, 0);
         ::send(clientfd, data, len, 0);
-        delete tsize;
     }
+    delete tsize;
     delete tres;
 }
 

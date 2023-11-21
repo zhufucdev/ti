@@ -1,4 +1,5 @@
 #include "client.h"
+#include <log.h>
 #include <thread>
 
 using namespace ti::client;
@@ -12,11 +13,11 @@ void Client::start() {
         throw std::runtime_error("client already running");
     }
 
-    socketfd = socket(AF_INET, SOCK_STREAM, IPPROTO_IP);
+    socketfd = socket(PF_INET, SOCK_STREAM, IPPROTO_IP);
     struct sockaddr_in serveraddr;
     std::memset(&serveraddr, 0, sizeof serveraddr);
     serveraddr.sin_addr.s_addr = inet_addr(addr.c_str());
-    serveraddr.sin_family = AF_INET;
+    serveraddr.sin_family = PF_INET;
     serveraddr.sin_port = htons(port);
     if (::connect(socketfd, (struct sockaddr *)&serveraddr, sizeof serveraddr) <
         0) {
@@ -36,27 +37,35 @@ void Client::start() {
 
             char *tsize = (char *)calloc(BYTES_LEN_HEADER, sizeof(char));
             n = recv(socketfd, tsize, BYTES_LEN_HEADER * sizeof(char), 0);
-            if (n <= 0) {
+            if (n < 0) {
                 break;
             }
             size_t msize = read_len_header(tsize);
-            char *buff = (char *)calloc(msize, sizeof(char));
-            n = recv(socketfd, buff, msize, 0);
-            if (n <= 0) {
+            char *buff;
+            if (msize > 0) {
+                buff = (char *)calloc(msize, sizeof(char));
+                n = recv(socketfd, buff, msize, 0);
+            } else {
+                buff = nullptr;
+            }
+            if (n < 0) {
                 break;
             }
             auto res_c = (ResponseCode)*tres;
             if (res_c == ResponseCode::MESSAGE) {
                 on_message(buff, n);
+                delete buff;
             } else {
                 resmtx.lock();
                 res_queue.push(Response{buff, n, res_c});
                 resmtx.unlock();
             }
-            delete buff;
             delete tres;
+
             sockmtx.unlock();
+            std::this_thread::sleep_for(std::chrono::milliseconds(100));
         }
+        sockmtx.unlock();
         on_close();
         running = false;
     }).detach();
@@ -69,6 +78,9 @@ void Client::stop() {
     ::closesocketfd(socketfd);
 }
 Response Client::send(const RequestCode req_c, const void *data, size_t len) {
+    if (!running) {
+        throw std::runtime_error("client not running");
+    }
     auto *treq = (char *)calloc(1, sizeof(char));
     treq[0] = req_c;
     char *tsize = write_len_header(len);
@@ -79,9 +91,12 @@ Response Client::send(const RequestCode req_c, const void *data, size_t len) {
     delete treq;
 
     while (res_queue.empty()) {
-        // sockmtx should be unlocked very soon
+        // sockmtx should be unlocked after receiving
         sockmtx.lock();
         sockmtx.unlock();
+        if (!running) {
+            throw std::runtime_error("connection closed expectedly");
+        }
     }
     resmtx.lock();
     auto front = res_queue.front();

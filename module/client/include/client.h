@@ -45,9 +45,10 @@ class Client {
     template <typename... Args>
     Response send(RequestCode req_c, const std::string &first,
                   const Args &...args) {
-        char *buf = (char *)calloc(req_len(first, args...), sizeof(char));
+        size_t len = req_len(first, args...);
+        char *buf = (char *)calloc(len, sizeof(char));
         append_req_buffer(buf, first, args...);
-        auto res = send(req_c, buf, sizeof buf);
+        auto res = send(req_c, buf, len);
         delete buf;
         return res;
     }

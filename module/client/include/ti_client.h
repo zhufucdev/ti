@@ -2,7 +2,6 @@
 
 namespace ti {
 namespace client {
-enum VerificationResult { OK, MISMATCH };
 
 enum TiClientState { OFFLINE, LOGGED_OUT, READY, SENDING };
 
@@ -15,7 +14,7 @@ class TiClient : public Client, public orm::TiOrm {
     TiClient(std::string addr, short port, const std::string& dbfile);
     ~TiClient();
     TiClientState get_state();
-    VerificationResult user_login(const std::string& name, const std::string& password);
+    bool user_login(const std::string&user_id, const std::string& password);
     bool user_reg(const std::string& name, const std::string& password);
     bool user_logout();
     std::vector<User *> get_current_user() const;

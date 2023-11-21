@@ -161,7 +161,7 @@ TiServer::~TiServer() = default;
 Client *TiServer::on_connect(sockaddr_in addr) { return new TiClient(db); }
 
 std::vector<std::string> read_message_body(const char *data, size_t len) {
-    int i = 1, j = 1;
+    int i = 0, j = 0;
     std::vector<std::string> heap;
     while (i < len) {
         if (data[i] == '\0') {
@@ -172,33 +172,39 @@ std::vector<std::string> read_message_body(const char *data, size_t len) {
         i++;
     }
     if (j != i) {
-        std::string substr(data + j, len);
+        std::string substr(data + j, len - j);
         heap.push_back(substr);
     }
     return heap;
 }
 
-TiClient::TiClient(ServerOrm &db) : db(db), user(nullptr), token() {}
+TiClient::TiClient(ServerOrm &db)
+    : db(db), user(nullptr), token(), id(nanoid::generate()) {}
 TiClient::~TiClient() = default;
 void TiClient::on_connect(sockaddr_in addr) {
     logD("[client %s] connected to %s", id.c_str(), inet_ntoa(addr.sin_addr));
 }
 void TiClient::on_message(ti::RequestCode req, char *data, size_t len) {
-    auto body = read_message_body(data + 1, len);
+    auto body = read_message_body(data, len);
     switch (req) {
     case LOGIN:
+        logD("[client %s] login(%s, %s)", id.c_str(), body[0].c_str(), body[1].c_str());
         user_login(body[0], body[1]);
         break;
     case LOGOUT:
+        logD("[client %s] logout(%s)", id.c_str(), body[0].c_str());
         logout(body[0]);
         break;
     case REGISTER:
+        logD("[client %s] register(%s, %s)", id.c_str(), body[0].c_str(), body[1].c_str());
         user_register(body[0], body[1]);
         break;
     case DETERMINE:
+        logD("[client %s] determine(%s, %s)", id.c_str(), body[0].c_str(), body[1].c_str());
         determine(body[0], std::stoi(body[1]));
         break;
     case RECONNECT:
+        logD("[client %s] reconnect(%s)", id.c_str(), body[0].c_str());
         reconnect(body[0]);
         break;
     }
@@ -209,6 +215,7 @@ void TiClient::user_login(const std::string &user_id,
     if (db.check_password(user_id, password)) {
         auto res_buf = (char *)calloc(21, sizeof(char));
         token = nanoid::generate();
+        user = db.get_user(user_id);
         strcpy(res_buf, token.c_str());
         send(ResponseCode::OK, res_buf, sizeof res_buf);
         db.add_token(user, token);
