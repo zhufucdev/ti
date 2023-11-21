@@ -96,7 +96,7 @@ Response Client::send(const RequestCode req_c, const void *data, size_t len) {
         sockmtx.lock();
         sockmtx.unlock();
         if (!running) {
-            throw std::runtime_error("connection closed expectedly");
+            throw std::runtime_error("connection closed unexpectedly");
         }
     }
     resmtx.lock();
