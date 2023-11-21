@@ -31,7 +31,7 @@ const std::string version = "0.1";
 char *write_len_header(size_t len);
 size_t read_len_header(char *tsize);
 std::string to_iso_time(const std::time_t &time);
-std::time_t parse_iso_time(const std::string& str);
+std::time_t parse_iso_time(const std::string &str);
 
 class Entity {
   public:
@@ -106,6 +106,7 @@ enum RequestCode {
     LOGIN = 0,
     LOGOUT,
     REGISTER,
+    DELETE_USER,
     RECONNECT,
     DETERMINE,
 };
@@ -193,9 +194,10 @@ class TiOrm : public SqlDatabase {
     std::vector<User *> get_users() const;
     User *get_user(const std::string &id) const;
     void add_entity(Entity *entity);
+    void delete_entity(Entity *entity);
     std::vector<Entity *> get_entities() const;
     Entity *get_entity(const std::string &id) const;
-    void add_frames(const std::vector<Frame *>& frm, Message *parent = nullptr);
+    void add_frames(const std::vector<Frame *> &frm, Message *parent = nullptr);
     std::vector<Message *> get_messages() const;
     Message *get_message(const std::string &id);
     void add_message(Message *msg);

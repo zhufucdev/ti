@@ -24,4 +24,5 @@ class NetworkingTest : public testing::Test {
 TEST_F(NetworkingTest, Login) {
     auto id = client->user_reg(user_name, password);
     ASSERT_TRUE(client->user_login(id, password));
+    ASSERT_TRUE(client->user_delete());
 }

@@ -363,6 +363,23 @@ void TiOrm::add_entity(Entity *entity) {
         throw std::runtime_error("entity type not implemented");
     }
 }
+void TiOrm::delete_entity(ti::Entity *entity) {
+    auto r = std::remove(entities.begin(), entities.end(), entity);
+    if (*r == nullptr) {
+        throw std::runtime_error("entity not found");
+    }
+    SqlTransaction *t;
+    if (auto *u = dynamic_cast<User *>(entity)) {
+        t = prepare(R"(DELETE FROM "user" WHERE id = ?)");
+    } else if (auto *g = dynamic_cast<Group *>(entity)) {
+        t = prepare(R"(DELETE FROM "group" WHERE id = ?)");
+    } else {
+        throw std::runtime_error("unsupported enetity type");
+    }
+    t->bind_text(0, entity->get_id());
+    t->begin();
+    delete t;
+}
 std::vector<Entity *> TiOrm::get_entities() const { return entities; }
 Entity *TiOrm::get_entity(const std::string &id) const {
     return get_entity_in(entities, id);
@@ -371,7 +388,8 @@ void TiOrm::add_frames(const std::vector<Frame *> &frm, Message *parent) {
     for (auto f : frm) {
         frames.push_back(f);
         if (parent != nullptr) {
-            auto t = prepare(R"(INSERT INTO "box"(container_id, contained_id) VALUES (?, ?))");
+            auto t = prepare(
+                R"(INSERT INTO "box"(container_id, contained_id) VALUES (?, ?))");
             t->bind_text(0, parent->get_id());
             t->bind_text(1, f->get_id());
             t->begin();

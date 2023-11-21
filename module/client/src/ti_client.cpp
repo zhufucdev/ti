@@ -11,6 +11,7 @@ TiClient::~TiClient() { sqlite3_close(dbhandle); }
 void TiClient::on_message(char *data, size_t len) {}
 void TiClient::on_connect(sockaddr_in serveraddr) {
     logD("[client] connected to %s", inet_ntoa(serveraddr.sin_addr));
+    state = LOGGED_OUT;
 }
 void TiClient::on_close() { logD("[client] closed"); }
 
@@ -20,6 +21,7 @@ void TiClient::on_close() { logD("[client] closed"); }
 TiClientState TiClient::get_state() { return state; }
 bool TiClient::user_login(const std::string &user_id,
                           const std::string &password) {
+    panic_if_not(LOGGED_OUT);
     auto res = Client::send(RequestCode::LOGIN, user_id, password);
     switch (res.code) {
     case ResponseCode::NOT_FOUND:
@@ -35,6 +37,7 @@ bool TiClient::user_login(const std::string &user_id,
 }
 std::string TiClient::user_reg(const std::string &name,
                                const std::string &password) {
+    panic_if_not(LOGGED_OUT);
     auto res = Client::send(RequestCode::REGISTER, name, password);
     switch (res.code) {
     case ResponseCode::BAD_REQUEST:
@@ -46,9 +49,7 @@ std::string TiClient::user_reg(const std::string &name,
     }
 }
 bool TiClient::user_logout() {
-    if (state < READY) {
-        return false;
-    }
+    panic_if_not(READY);
     auto res = Client::send(RequestCode::LOGOUT, token);
     switch (res.code) {
     case ResponseCode::TOKEN_EXPIRED:
@@ -60,6 +61,24 @@ bool TiClient::user_logout() {
         panic_unknown_res("logout", res.code);
     }
 }
+bool TiClient::user_delete() {
+    panic_if_not(READY);
+    auto res = Client::send(RequestCode::DELETE_USER, token);
+    switch (res.code) {
+    case ResponseCode::OK:
+        return true;
+    case ResponseCode::NOT_FOUND:
+    case ResponseCode::TOKEN_EXPIRED:
+        return false;
+    default:
+        panic_unknown_res("user_delete", res.code);
+    }
+}
 std::vector<User *> TiClient::get_current_user() const {}
 std::vector<Entity *> TiClient::get_contacts() const {}
 void TiClient::send(ti::Message *message) {}
+void TiClient::panic_if_not(ti::client::TiClientState target) {
+    if (state < target) {
+        throw std::runtime_error("illegal client state");
+    }
+}

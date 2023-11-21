@@ -201,6 +201,10 @@ void TiClient::on_message(ti::RequestCode req, char *data, size_t len) {
              body[1].c_str());
         user_register(body[0], body[1]);
         break;
+    case DELETE_USER:
+        logD("[client %s] delete_user(%s)", id.c_str(), body[0].c_str());
+        user_delete(body[0]);
+        break;
     case DETERMINE:
         logD("[client %s] determine(%s, %s)", id.c_str(), body[0].c_str(),
              body[1].c_str());
@@ -216,15 +220,28 @@ void TiClient::on_message(ti::RequestCode req, char *data, size_t len) {
 void TiClient::user_login(const std::string &user_id,
                           const std::string &password) {
     if (db.check_password(user_id, password)) {
-        auto res_buf = (char *)calloc(21, sizeof(char));
         token = nanoid::generate();
         user = db.get_user(user_id);
-        strcpy(res_buf, token.c_str());
-        send(ResponseCode::OK, res_buf, sizeof res_buf);
+        send(ResponseCode::OK, (void *)token.c_str(), token.length());
         db.add_token(user, token);
         logD("[client %s] logged in as %s", id.c_str(), user_id.c_str());
     } else {
         send(ResponseCode::NOT_FOUND);
+    }
+}
+
+void TiClient::user_delete(const std::string &curr_token) {
+    if (user == nullptr) {
+        send(ResponseCode::NOT_FOUND);
+    } else if (token != curr_token) {
+        send(ResponseCode::TOKEN_EXPIRED);
+    } else {
+        try {
+            db.delete_entity(user);
+            send(ResponseCode::OK);
+        } catch (std::runtime_error &e) {
+            send(ResponseCode::NOT_FOUND);
+        }
     }
 }
 
@@ -267,7 +284,7 @@ void TiClient::user_register(const std::string &user_name,
     } else {
         auto user_id = nanoid::generate();
         db.add_user(new User(user_id, user_name, {}), passcode);
-        send(ResponseCode::OK, (void*)user_id.c_str(), user_id.length());
+        send(ResponseCode::OK, (void *)user_id.c_str(), user_id.length());
     }
 }
 

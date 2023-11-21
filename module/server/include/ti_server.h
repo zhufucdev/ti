@@ -32,6 +32,7 @@ class TiClient : public Client {
     std::string token;
     void user_login(const std::string &user_id, const std::string &password);
     void reconnect(const std::string &old_token);
+    void user_delete(const std::string &curr_token);
     void determine(const std::string &curr_token, int token_id);
     void logout(const std::string &old_token);
     void user_register(const std::string &user_name, const std::string &passcode);

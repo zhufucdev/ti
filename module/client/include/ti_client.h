@@ -10,6 +10,8 @@ class TiClient : public Client, public orm::TiOrm {
     sqlite3 *dbhandle;
     std::string userid, token;
 
+    void panic_if_not(ti::client::TiClientState target);
+
   public:
     TiClient(std::string addr, short port, const std::string& dbfile);
     ~TiClient();
@@ -17,6 +19,7 @@ class TiClient : public Client, public orm::TiOrm {
     bool user_login(const std::string&user_id, const std::string& password);
     std::string user_reg(const std::string& name, const std::string& password);
     bool user_logout();
+    bool user_delete();
     std::vector<User *> get_current_user() const;
     std::vector<Entity *> get_contacts() const;
     void send(Message *message);
