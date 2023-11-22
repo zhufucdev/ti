@@ -10,9 +10,9 @@ class ServerOrmTest : public testing::Test {
     const std::string group_name = "Sick Group";
     const std::string group_id = "C4E7tI86DrbVJdBMphpV0";
     ti::User testificate_man{"l1mITy-T1UBWsGeqLszsL", "Testificate Man",
-                             "I test a lot"};
+                             "I test a lot", 0};
     ti::User testificate_woman{"Z0RSddx7esE8lmT0fZ1Yc", "Testificate Woman",
-                               "I test a lot"};
+                               "I test a lot", 0};
 
     void SetUp() override { sorm = new ti::server::ServerOrm(dbfile); }
     void TearDown() override {

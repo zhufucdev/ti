@@ -283,7 +283,7 @@ void TiClient::user_register(const std::string &user_name,
         send(ResponseCode::BAD_REQUEST);
     } else {
         auto user_id = nanoid::generate();
-        db.add_user(new User(user_id, user_name, {}), passcode);
+        db.add_user(new User(user_id, user_name, {}, 0), passcode);
         send(ResponseCode::OK, (void *)user_id.c_str(), user_id.length());
     }
 }

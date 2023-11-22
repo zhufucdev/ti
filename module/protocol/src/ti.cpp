@@ -55,11 +55,12 @@ Server::Server() = default;
 std::string Server::get_id() const { return "zGuEzyj3EUyeSKAvHw3Zo"; }
 
 User::User(const std::string &id, const std::string &name,
-           const std::string &bio)
-    : id(id), name(name), bio(bio) {}
+           const std::string &bio, const time_t registration_time)
+    : id(id), name(name), bio(bio), registration_time(registration_time) {}
 std::string User::get_id() const { return id; }
 std::string User::get_name() const { return name; }
 std::string User::get_bio() const { return bio; }
+time_t User::get_registration_time() const { return registration_time; }
 
 Group::Group(std::string id, std::string name, std::vector<Entity *> members)
     : id(std::move(id)), name(std::move(name)), members(std::move(members)) {}
@@ -234,48 +235,50 @@ T *get_entity_in(const std::vector<T *> &vec, const std::string &id) {
 }
 TiOrm::TiOrm(const std::string &dbfile) : SqlDatabase(dbfile) {
     logD("[orm] executing initializing SQL");
-    exec_sql("CREATE TABLE IF NOT EXISTS \"user\"\n"
-             "(\n    id   varchar(21) primary key not null,\n"
-             "    name varchar                 not null,\n"
-             "    bio  varchar                 not null\n"
-             ");\n"
-             "CREATE TABLE IF NOT EXISTS \"group\"\n"
-             "(\n"
-             "    id   varchar(21) primary key not null,\n"
-             "    name varchar                 not null,\n"
-             "    foreign key (id)\n"
-             "        references box (container_id)\n"
-             "        on delete cascade\n"
-             ""
-             ");\n"
-             "CREATE TABLE IF NOT EXISTS \"text_frame\"\n"
-             "(\n"
-             "    id      varchar(21) primary key not null,\n"
-             "    content varchar                 not null\n"
-             ");\n"
-             "CREATE TABLE IF NOT EXISTS \"message\"\n"
-             "(\n"
-             "    id           varchar(21) primary key not null,\n"
-             "    time         datetime                not null,\n"
-             "    sender_id    varchar(21)             not null,\n"
-             "    receiver_id  varchar(21)             not null,\n"
-             "    forwarded_id varchar(21)             not null\n"
-             ");\n"
-             "CREATE TABLE IF NOT EXISTS \"box\"\n"
-             "(\n"
-             "    id           integer primary key,\n"
-             "    container_id varchar(21) not null,\n"
-             "    contained_id varchar(21) not null,\n"
-             "    unique (contained_id, container_id)\n"
-             ");");
+    exec_sql(R"(CREATE TABLE IF NOT EXISTS "user"
+(
+    id                varchar(21) primary key not null,
+    name              varchar                 not null,
+    bio               varchar                 not null,
+    registration_date datetime                not null
+);
+CREATE TABLE IF NOT EXISTS "group"
+(
+    id   varchar(21) primary key not null,
+    name varchar                 not null,
+    foreign key (id)
+        references box (container_id)
+        on delete cascade
+);
+CREATE TABLE IF NOT EXISTS "text_frame"
+(
+    id      varchar(21) primary key not null,
+    content varchar                 not null
+);
+CREATE TABLE IF NOT EXISTS "message"
+(
+    id           varchar(21) primary key not null,
+    time         datetime                not null,
+    sender_id    varchar(21)             not null,
+    receiver_id  varchar(21)             not null,
+    forwarded_id varchar(21)             not null
+);
+CREATE TABLE IF NOT EXISTS "box"
+(
+    id           integer primary key,
+    container_id varchar(21) not null,
+    contained_id varchar(21) not null,
+    unique (contained_id, container_id)
+);)");
 }
 void TiOrm::pull() {
     entities.clear();
     entities.push_back(new Server());
     auto t = prepare(R"(SELECT * FROM "user")");
     for (auto row : *t) {
-        entities.push_back(
-            new User(row.get_text(0), row.get_text(1), row.get_text(2)));
+        entities.push_back(new User(row.get_text(0), row.get_text(1),
+                                    row.get_text(2),
+                                    parse_iso_time(row.get_text(3))));
     }
     delete t;
 
@@ -340,10 +343,11 @@ User *TiOrm::get_user(const std::string &id) const {
 void TiOrm::add_entity(Entity *entity) {
     entities.push_back(entity);
     if (auto *u = dynamic_cast<User *>(entity)) {
-        auto t = prepare(R"(INSERT INTO "user" VALUES (?, ?, ?))");
+        auto t = prepare(R"(INSERT INTO "user" VALUES (?, ?, ?, ?))");
         t->bind_text(0, u->get_id());
         t->bind_text(1, u->get_name());
         t->bind_text(2, u->get_bio());
+        t->bind_text(3, to_iso_time(u->get_registration_time()));
         t->begin();
         delete t;
     } else if (auto *g = dynamic_cast<Group *>(entity)) {

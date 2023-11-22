@@ -47,14 +47,16 @@ class Server : public Entity {
 
 class User : public Entity {
     std::string name, id, bio;
+    time_t registration_time;
 
   public:
     User(const std::string &id, const std::string &name,
-         const std::string &bio);
+         const std::string &bio, const time_t registration_time);
 
     std::string get_id() const override;
     std::string get_name() const;
     std::string get_bio() const;
+    time_t get_registration_time() const;
 };
 
 class Group : public Entity {
@@ -168,15 +170,14 @@ class SqlDatabase {
     sqlite3 *dbhandle;
     bool is_cpy;
 
-  protected:
-    SqlTransaction *prepare(const std::string &expr) const;
-    void exec_sql(const std::string &expr) const;
-    int get_changes() const;
-
   public:
     explicit SqlDatabase(const std::string &dbfile);
     SqlDatabase(const SqlDatabase &h);
     ~SqlDatabase();
+    SqlTransaction *prepare(const std::string &expr) const;
+    void exec_sql(const std::string &expr) const;
+    int get_changes() const;
+
     static void initialize();
     static void shutdown();
 };

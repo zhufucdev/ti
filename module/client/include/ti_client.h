@@ -17,6 +17,7 @@ class TiClient : public Client, public orm::TiOrm {
     ~TiClient();
     TiClientState get_state();
     bool user_login(const std::string&user_id, const std::string& password);
+
     std::string user_reg(const std::string& name, const std::string& password);
     bool user_logout();
     bool user_delete();

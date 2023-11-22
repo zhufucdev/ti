@@ -7,7 +7,7 @@ class PasswordTest : public testing::Test {
     std::string dbfile = nanoid::generate() + ".db";
     ti::server::ServerOrm *sorm = new ti::server::ServerOrm(dbfile);
     const std::string passcode = "root";
-    ti::User *user = new ti::User(nanoid::generate(), "", "");
+    ti::User *user = new ti::User(nanoid::generate(), "", "", 0);
 
     void SetUp() override { sorm->add_user(user, passcode); }
     void TearDown() override {
