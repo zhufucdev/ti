@@ -19,7 +19,10 @@ class TimeSqlTest : public testing::Test {
         ti::orm::SqlDatabase::initialize();
         db = new ti::orm::SqlDatabase(dbfile);
     }
-    void TearDown() override { delete db; }
+    void TearDown() override {
+        delete db;
+        std::remove(dbfile.c_str());
+    }
 };
 
 TEST_F(TimeSqlTest, Sql) {
