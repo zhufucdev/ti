@@ -4,7 +4,7 @@
 
 using namespace ti;
 
-class NetworkingTest : public testing::Test {
+class ClientTest : public testing::Test {
   protected:
     client::TiClient *client{};
     std::string dbfile = nanoid::generate() + ".db";
@@ -21,7 +21,7 @@ class NetworkingTest : public testing::Test {
     }
 };
 
-TEST_F(NetworkingTest, Login) {
+TEST_F(ClientTest, Login) {
     auto id = client->user_reg(user_name, password);
     ASSERT_TRUE(client->user_login(id, password));
     ASSERT_TRUE(client->user_delete());
