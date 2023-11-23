@@ -1,5 +1,5 @@
-if(EXISTS "C:/Users/Hehe/Desktop/ti/out/build/x64-Debug/ti_test[1]_tests.cmake")
-  include("C:/Users/Hehe/Desktop/ti/out/build/x64-Debug/ti_test[1]_tests.cmake")
+if(EXISTS "C:/Users/hsutu/source/repos/ti/out/build/x64-Debug/ti_test[1]_tests.cmake")
+  include("C:/Users/hsutu/source/repos/ti/out/build/x64-Debug/ti_test[1]_tests.cmake")
 else()
   add_test(ti_test_NOT_BUILT ti_test_NOT_BUILT)
 endif()

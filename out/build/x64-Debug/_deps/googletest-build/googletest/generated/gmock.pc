@@ -1,5 +1,5 @@
-libdir=C:/Users/Hehe/Desktop/ti/out/install/x64-Debug/lib
-includedir=C:/Users/Hehe/Desktop/ti/out/install/x64-Debug/include
+libdir=C:/Users/hsutu/Source/Repos/ti/out/install/x64-Debug/lib
+includedir=C:/Users/hsutu/Source/Repos/ti/out/install/x64-Debug/include
 
 Name: gmock
 Description: GoogleMock (without main() function)

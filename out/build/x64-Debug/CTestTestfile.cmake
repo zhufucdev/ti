@@ -1,10 +1,10 @@
 # CMake generated Testfile for 
-# Source directory: C:/Users/Hehe/Desktop/ti
-# Build directory: C:/Users/Hehe/Desktop/ti/out/build/x64-Debug
+# Source directory: C:/Users/hsutu/source/repos/ti
+# Build directory: C:/Users/hsutu/source/repos/ti/out/build/x64-Debug
 # 
 # This file includes the relevant testing commands required for 
 # testing this directory and lists subdirectories to be tested as well.
-include("C:/Users/Hehe/Desktop/ti/out/build/x64-Debug/ti_test[1]_include.cmake")
+include("C:/Users/hsutu/source/repos/ti/out/build/x64-Debug/ti_test[1]_include.cmake")
 subdirs("_deps/googletest-build")
 subdirs("thirdparty/NanoId")
 subdirs("thirdparty/Aes256")
