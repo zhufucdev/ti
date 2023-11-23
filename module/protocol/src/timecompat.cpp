@@ -1,4 +1,7 @@
 #include "timecompat.h"
+
+#include <ctime>
+#if _WIN32
 /*	$NetBSD: strptime.c,v 1.62 2017/08/24 01:01:09 ginsbach Exp $	*/
 /* http://cvsweb.netbsd.org/bsdweb.cgi/~checkout~/src/lib/libc/time/strptime.c?only_with_tag=HEAD
  * NetBSD implementation strptime().
@@ -36,11 +39,9 @@
 
 // #include <sys/cdefs.h>
 //__RCSID("$NetBSD: strptime.c,v 1.62 2017/08/24 01:01:09 ginsbach Exp $");
-
 #include <ctype.h>
 #include <cstdint>
 #include <cstring>
-#include <ctime>
 
 /*
  * We do not implement alternate representations. However, we always
@@ -819,11 +820,19 @@ static const unsigned char *find_string(const unsigned char *bp, int *tgt,
 }
 
 std::time_t timegm(std::tm *tm) {
-#if _WIN32
     return _mkgmtime(tm);
-#else
-    return timegm(tm);
-#endif
 }
 } // namespace time
 } // namespace compat
+#else
+namespace compat {
+namespace time {
+char* strptime(const char *time, const char *format, std::tm *tm) {
+    return ::strptime(time, format, tm);
+}
+std::time_t timegm(std::tm *tm) {
+    return ::timegm(tm);
+}
+}
+}
+#endif
