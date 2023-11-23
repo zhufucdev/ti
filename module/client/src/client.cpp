@@ -49,7 +49,7 @@ void Client::start() {
 
             char *tsize = (char *)calloc(BYTES_LEN_HEADER, sizeof(char));
             n = recv(socketfd, tsize, BYTES_LEN_HEADER * sizeof(char), 0);
-            if (n < 0) {
+            if (n <= 0) {
                 break;
             }
             size_t msize = read_len_header(tsize);
@@ -57,12 +57,12 @@ void Client::start() {
             if (msize > 0) {
                 buff = (char *)calloc(msize, sizeof(char));
                 n = recv(socketfd, buff, msize, 0);
+                if (n <= 0) {
+                    break;
+                }
             } else {
                 buff = nullptr;
                 n = 0;
-            }
-            if (n < 0) {
-                break;
             }
             auto res_c = (ResponseCode)*tres;
             if (res_c == ResponseCode::MESSAGE) {
@@ -78,7 +78,6 @@ void Client::start() {
             sockmtx.unlock();
             std::this_thread::sleep_for(std::chrono::milliseconds(100));
         }
-        sockmtx.unlock();
         on_close();
         running = false;
     }).detach();
