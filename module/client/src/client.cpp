@@ -13,7 +13,19 @@ void Client::start() {
         throw std::runtime_error("client already running");
     }
 
+    #if _WIN32
+    WSADATA wsaData;
+    if (WSAStartup(MAKEWORD(2, 2), &wsaData) != 0) {
+        throw std::runtime_error("failed to initialize winsock");
+    }
+    socketfd = socket(PF_INET, SOCK_STREAM, IPPROTO_TCP);
+    if (socketfd == INVALID_SOCKET) {
+        WSACleanup();
+        throw std::runtime_error("failed to create socket");
+    }
+    #else
     socketfd = socket(PF_INET, SOCK_STREAM, IPPROTO_IP);
+    #endif
     struct sockaddr_in serveraddr;
     std::memset(&serveraddr, 0, sizeof serveraddr);
     serveraddr.sin_addr.s_addr = inet_addr(addr.c_str());

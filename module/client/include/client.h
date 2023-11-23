@@ -10,7 +10,7 @@ struct Response {
     const ResponseCode code;
 };
 
-template <typename T> size_t req_len(const T &str) { return str.length(); }
+template <typename T> size_t req_len(const T &str) { return str.length() + 1; }
 
 template <typename T, typename... Args>
 size_t req_len(const T &first, const Args &...args) {

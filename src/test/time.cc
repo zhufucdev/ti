@@ -32,7 +32,8 @@ TEST_F(TimeSqlTest, Sql) {
     value datetime not null
 ))");
     auto t = db->prepare(R"(INSERT INTO "time"(value) VALUES (?))");
-    t->bind_text(0, ti::to_iso_time(now));
+    auto tstr = ti::to_iso_time(now);
+    t->bind_text(0, tstr);
     t->begin();
     delete t;
 
