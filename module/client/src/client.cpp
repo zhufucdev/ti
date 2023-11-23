@@ -85,9 +85,9 @@ Response Client::send(const RequestCode req_c, const void *data, size_t len) {
     auto *treq = (char *)calloc(1, sizeof(char));
     treq[0] = req_c;
     char *tsize = write_len_header(len);
-    ::send(socketfd, treq, sizeof(char), 0);
-    ::send(socketfd, tsize, BYTES_LEN_HEADER * sizeof(char), 0);
-    ::send(socketfd, data, len, 0);
+    compat::socket::send(socketfd, treq, sizeof(char), 0);
+    compat::socket::send(socketfd, tsize, BYTES_LEN_HEADER * sizeof(char), 0);
+    compat::socket::send(socketfd, data, len, 0);
     delete tsize;
     delete treq;
 

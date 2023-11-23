@@ -117,11 +117,11 @@ void Server::handleconn(sockaddr_in addr, SocketFd clientfd) {
 void Server::send(SocketFd clientfd, ResponseCode res, void *data, size_t len) {
     auto *tres = (char *)calloc(1, sizeof(char));
     tres[0] = res;
-    ::send(clientfd, tres, sizeof(char), 0);
+    compat::socket::send(clientfd, tres, sizeof(char), 0);
     char *tsize = write_len_header(len);
-    ::send(clientfd, tsize, sizeof(char) * BYTES_LEN_HEADER, 0);
+    compat::socket::send(clientfd, tsize, sizeof(char) * BYTES_LEN_HEADER, 0);
     if (len > 0) {
-        ::send(clientfd, data, len, 0);
+        compat::socket::send(clientfd, data, len, 0);
     }
     delete tsize;
     delete tres;

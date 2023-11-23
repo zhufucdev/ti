@@ -74,8 +74,8 @@ bool TiClient::user_delete() {
         panic_unknown_res("user_delete", res.code);
     }
 }
-std::vector<User *> TiClient::get_current_user() const {}
-std::vector<Entity *> TiClient::get_contacts() const {}
+std::vector<User *> TiClient::get_current_user() const { return {}; }
+std::vector<Entity *> TiClient::get_contacts() const { return {}; }
 void TiClient::send(ti::Message *message) {}
 void TiClient::panic_if_not(ti::client::TiClientState target) {
     if (state < target) {

@@ -6,7 +6,7 @@ namespace ti {
 namespace client {
 struct Response {
     const char *buff;
-    const ssize_t len;
+    const size_t len;
     const ResponseCode code;
 };
 

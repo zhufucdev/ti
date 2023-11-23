@@ -3,29 +3,9 @@
 #include <vector>
 #include <ctime>
 #include <stdexcept>
+#include "socketcompat.h"
 
 #define BYTES_LEN_HEADER 8
-
-#ifdef _WIN32
-#include <winsock2.h>
-#include <ws2tcpip.h>
-#pragma comment(lib, "ws2_32.lib")
-#else
-#include <arpa/inet.h>
-#include <netinet/in.h>
-#include <sys/socket.h>
-#include <unistd.h>
-#endif
-
-#ifdef _WIN32
-#define closesocketfd(A)                                                       \
-    closesocket(A);                                                            \
-    WSACleanup()
-#define SocketFd SOCKET
-#else
-#define closesocketfd(A) close(A)
-#define SocketFd int
-#endif
 
 namespace ti {
 const std::string version = "0.1";

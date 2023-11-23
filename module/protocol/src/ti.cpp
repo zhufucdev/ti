@@ -1,8 +1,9 @@
 #include "ti.h"
 #include "log.h"
 #include <sstream>
-#include <time.h>
+#include <ctime>
 #include <algorithm>
+#include <timecompat.h>
 
 using namespace ti;
 using namespace orm;
@@ -35,8 +36,8 @@ std::string ti::to_iso_time(const std::time_t &time) {
 
 std::time_t ti::parse_iso_time(const std::string &str) {
     std::tm tm{};
-    strptime(str.c_str(), "%FT%TZ", &tm);
-    return timegm(&tm);
+    compat::time::strptime(str.c_str(), "%FT%TZ", &tm);
+    return compat::time::timegm(&tm);
 }
 
 std::string write_entities(std::vector<Entity *> entities) {
