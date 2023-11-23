@@ -1,6 +1,8 @@
 #include "ti.h"
 #include "log.h"
 #include <sstream>
+#include <time.h>
+#include <algorithm>
 
 using namespace ti;
 using namespace orm;

@@ -1,4 +1,5 @@
 #include "ti.h"
+#include <functional>
 
 #define SendFn std::function<void(ti::ResponseCode, void *, size_t)>
 

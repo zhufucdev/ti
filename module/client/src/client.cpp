@@ -30,7 +30,7 @@ void Client::start() {
         while (running) {
             sockmtx.lock();
             char *tres = (char *)calloc(1, sizeof(char));
-            ssize_t n = recv(socketfd, tres, 1, 0);
+            size_t n = recv(socketfd, tres, 1, 0);
             if (n <= 0) {
                 break;
             }

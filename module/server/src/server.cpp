@@ -76,7 +76,7 @@ void Server::stop() {
     closesocketfd(socketfd);
 }
 
-void Server::handleconn(sockaddr_in addr, int clientfd) {
+void Server::handleconn(sockaddr_in addr, SocketFd clientfd) {
     std::thread([&] {
         auto *handler = this->on_connect(addr);
         handler->initialize([&](ResponseCode res, void *content, int len) {
@@ -89,7 +89,7 @@ void Server::handleconn(sockaddr_in addr, int clientfd) {
         size_t msize;
 
         while (true) {
-            ssize_t n = recv(clientfd, treq, 1, 0);
+            size_t n = recv(clientfd, treq, 1, 0);
             if (n <= 0) {
                 break;
             }
@@ -114,7 +114,7 @@ void Server::handleconn(sockaddr_in addr, int clientfd) {
     }).detach();
 }
 
-void Server::send(int clientfd, ResponseCode res, void *data, size_t len) {
+void Server::send(SocketFd clientfd, ResponseCode res, void *data, size_t len) {
     auto *tres = (char *)calloc(1, sizeof(char));
     tres[0] = res;
     ::send(clientfd, tres, sizeof(char), 0);

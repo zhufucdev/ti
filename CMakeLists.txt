@@ -6,12 +6,13 @@ cmake_policy(VERSION 3.24)
 FetchContent_Declare(
         googletest
         # Specify the commit you depend on and update it regularly.
-        URL https://github.com/google/googletest/archive/5376968f6948923e2411081fd9372e71a59d8e77.zip
+        URL https://gitee.com/mirrors/googletest/repository/archive/v1.14.0
 )
 FetchContent_MakeAvailable(googletest)
 
 if (WIN32)
     set(gtest_force_shared_crt ON CACHE BOOL "" FORCE)
+    set(PROJECT_LINK_LIBS sqlite3.dll)
 endif ()
 set(CMAKE_CXX_STANDARD 14)
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/bin")
@@ -20,6 +21,7 @@ set(THIRDPARTY_LIB "${CMAKE_CURRENT_SOURCE_DIR}/thirdparty")
 add_subdirectory("${THIRDPARTY_LIB}/NanoId")
 add_subdirectory("${THIRDPARTY_LIB}/Aes256")
 add_subdirectory("${THIRDPARTY_LIB}/Argon2")
+add_subdirectory("${THIRDPARTY_LIB}/SQLite3")
 
 set(MODULES_DIR "${CMAKE_CURRENT_SOURCE_DIR}/module")
 add_subdirectory("${MODULES_DIR}/protocol")

@@ -1,6 +1,8 @@
 #include <sqlite3.h>
 #include <string>
 #include <vector>
+#include <ctime>
+#include <stdexcept>
 
 #define BYTES_LEN_HEADER 8
 
