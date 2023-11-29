@@ -9,7 +9,7 @@ class ServerOrm : public orm::TiOrm {
   public:
     explicit ServerOrm(const std::string &dbfile);
     void pull() override;
-    std::vector<Entity *> get_contacts(const User &owner) const;
+    std::vector<Entity *> get_contacts(const User *owner) const;
     bool check_password(const std::string &user_id, const std::string &passcode) const;
     User *check_token(const std::string &token) const;
     void add_token(ti::User *owner, const std::string &token);
@@ -30,11 +30,47 @@ class TiClient : public Client {
     std::string id;
     User *user;
     std::string token;
+    /**
+     * Response code: OK, NOT_FOUND
+     * @param user_id
+     * @param password
+     */
     void user_login(const std::string &user_id, const std::string &password);
+    /**
+     * Response code: OK, NOT_FOUND
+     * @param old_token
+     */
     void reconnect(const std::string &old_token);
+    /**
+     * Align the local and remote database
+     * Response code: TODO
+     * @param curr_token
+     * @param selector
+     */
+    void sync(const std::string &curr_token, const std::string &selector);
+    /**
+     * Unregister current account
+     * Response code: TOKEN_EXPIRED, OK, NOT_FOUND
+     * @param curr_token
+     */
     void user_delete(const std::string &curr_token);
+    /**
+     * End an another remote session
+     * Response code: TOKEN_EXPIRED, OK, NOT_FOUND
+     * @param curr_token
+     * @param token_id
+     */
     void determine(const std::string &curr_token, int token_id);
-    void logout(const std::string &old_token);
+    /**
+     * Response code: TOKEN_EXPIRED, OK, NOT_FOUND
+     * @param curr_token
+     */
+    void logout(const std::string &curr_token);
+    /**
+     * Response code: OK, BAD_REQUEST
+     * @param user_name
+     * @param passcode
+     */
     void user_register(const std::string &user_name, const std::string &passcode);
 
   public:

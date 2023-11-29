@@ -11,11 +11,16 @@ namespace ti {
 const std::string version = "0.1";
 
 char *write_len_header(size_t len);
-size_t read_len_header(char *tsize);
+size_t read_len_header(const char *tsize);
 std::string to_iso_time(const std::time_t &time);
 std::time_t parse_iso_time(const std::string &str);
 
-class Entity {
+class BinarySerializable {
+  public:
+    virtual size_t serialize(char **dst) const = 0;
+};
+
+class Entity : BinarySerializable {
   public:
     virtual std::string get_id() const = 0;
     bool operator==(const Entity &other) const;
@@ -25,6 +30,7 @@ class Server : public Entity {
   public:
     std::string get_id() const override;
     Server();
+    size_t serialize(char **dst) const override;
 };
 
 class User : public Entity {
@@ -33,12 +39,13 @@ class User : public Entity {
 
   public:
     User(const std::string &id, const std::string &name,
-         const std::string &bio, const time_t registration_time);
+         const std::string &bio, time_t registration_time);
 
     std::string get_id() const override;
     std::string get_name() const;
     std::string get_bio() const;
     time_t get_registration_time() const;
+    size_t serialize(char **dst) const override;
 };
 
 class Group : public Entity {
@@ -51,9 +58,10 @@ class Group : public Entity {
     std::string get_id() const override;
     std::string get_name();
     std::vector<Entity *> &get_members();
+    size_t serialize(char **dst) const override;
 };
 
-class Frame {
+class Frame : BinarySerializable {
   public:
     virtual std::string to_string() const = 0;
     virtual std::string get_id() const = 0;
@@ -67,9 +75,10 @@ class TextFrame : public Frame {
     TextFrame(std::string id, std::string content);
     std::string get_id() const override;
     std::string to_string() const override;
+    size_t serialize(char **dst) const override;
 };
 
-class Message {
+class Message : BinarySerializable {
     std::vector<Frame *> frames;
     Entity *sender, *receiver, *forwarded_from;
     std::string id;
@@ -84,12 +93,14 @@ class Message {
     Entity *get_receiver() const;
     Entity *get_forward_source() const;
     std::time_t get_time() const;
+    size_t serialize(char **dst) const override;
 };
 
 enum RequestCode {
     LOGIN = 0,
     LOGOUT,
     REGISTER,
+    SYNC,
     DELETE_USER,
     RECONNECT,
     DETERMINE,

@@ -1,8 +1,9 @@
 #include "ti.h"
 #include "log.h"
-#include <sstream>
-#include <ctime>
 #include <algorithm>
+#include <ctime>
+#include <numeric>
+#include <sstream>
 #include <timecompat.h>
 
 using namespace ti;
@@ -18,7 +19,7 @@ char *ti::write_len_header(size_t len) {
     return tsize;
 }
 
-size_t ti::read_len_header(char *tsize) {
+size_t ti::read_len_header(const char *tsize) {
     int n = 0;
     size_t msize = 0;
     while (n < BYTES_LEN_HEADER) {
@@ -56,6 +57,12 @@ bool Entity::operator==(const Entity &other) const {
 
 Server::Server() = default;
 std::string Server::get_id() const { return "zGuEzyj3EUyeSKAvHw3Zo"; }
+size_t Server::serialize(char **dst) const {
+    auto id = get_id();
+    *dst = (char *)calloc(id.length() + 1, sizeof(char));
+    std::memcpy(*dst, id.c_str(), id.length());
+    return id.length() + 1;
+}
 
 User::User(const std::string &id, const std::string &name,
            const std::string &bio, const time_t registration_time)
@@ -64,17 +71,53 @@ std::string User::get_id() const { return id; }
 std::string User::get_name() const { return name; }
 std::string User::get_bio() const { return bio; }
 time_t User::get_registration_time() const { return registration_time; }
+size_t User::serialize(char **dst) const {
+    auto reg_time = ti::to_iso_time(registration_time);
+    auto len =
+        id.length() + name.length() + bio.length() + reg_time.length() + 4;
+    *dst = (char *)calloc(len, sizeof(char));
+    std::memcpy(*dst, id.c_str(), id.length());
+    std::memcpy(*dst + id.length() + 1, name.c_str(), name.length());
+    std::memcpy(*dst + id.length() + name.length() + 2, bio.c_str(),
+                bio.length());
+    std::memcpy(*dst + len - reg_time.length() - 1, reg_time.c_str(),
+                reg_time.length());
+    return len;
+}
 
 Group::Group(std::string id, std::string name, std::vector<Entity *> members)
     : id(std::move(id)), name(std::move(name)), members(std::move(members)) {}
 std::string Group::get_name() { return name; }
 std::string Group::get_id() const { return id; }
 std::vector<Entity *> &Group::get_members() { return members; }
+size_t Group::serialize(char **dst) const {
+    auto len = name.length() + id.length() + members.size() + 2;
+    std::accumulate(
+        members.begin(), members.end(), len,
+        [&](size_t l, const Entity *e) { return l + e->get_id().length(); });
+    *dst = (char *)calloc(len, sizeof(char));
+    std::memcpy(*dst, id.c_str(), id.length());
+    std::memcpy(*dst + id.length() + 1, name.c_str(), name.length());
+    auto p = id.length() + name.length() + 2;
+    for (auto e : members) {
+        auto mid = e->get_id();
+        std::memcpy(*dst + p, mid.c_str(), mid.length());
+        p += mid.length() + 1;
+    }
+    return len;
+}
 
 TextFrame::TextFrame(std::string id, std::string content)
     : id(std::move(id)), content(std::move(content)) {}
 std::string TextFrame::get_id() const { return id; }
 std::string TextFrame::to_string() const { return content; }
+size_t TextFrame::serialize(char **dst) const {
+    auto len = id.length() + content.length() + 2;
+    *dst = (char *)calloc(len, sizeof(char));
+    std::memcpy(*dst, id.c_str(), id.length());
+    std::memcpy(*dst + id.length() + 1, content.c_str(), content.length());
+    return len;
+}
 
 Message::Message(std::string id, std::vector<Frame *> content, std::time_t time,
                  ti::Entity *sender, ti::Entity *receiver,
@@ -87,6 +130,45 @@ Entity *Message::get_sender() const { return sender; }
 Entity *Message::get_receiver() const { return receiver; }
 Entity *Message::get_forward_source() const { return forwarded_from; }
 std::time_t Message::get_time() const { return time; }
+size_t Message::serialize(char **dst) const {
+    auto time_str = ti::to_iso_time(time);
+    auto forwardid = forwarded_from == nullptr ? "" : forwarded_from->get_id();
+
+    size_t len = id.length() + BYTES_LEN_HEADER + sender->get_id().length() +
+                 forwardid.length() + receiver->get_id().length() +
+                 time_str.length() + 4;
+    std::accumulate(frames.begin(), frames.end(), len, [](auto a, auto e) {
+        return a + e->get_id().length() + 1;
+    });
+    *dst = (char *)calloc(len, sizeof(char));
+
+    size_t accu = 0;
+    std::memcpy(*dst, id.c_str(), id.length());
+    accu += id.length() + 1;
+
+    auto forward_buf = write_len_header(frames.size());
+    std::memcpy(*dst + accu, forward_buf, BYTES_LEN_HEADER);
+    delete forward_buf;
+    accu += BYTES_LEN_HEADER;
+
+    std::string cid;
+    for (auto frame : frames) {
+        cid = frame->get_id();
+        std::memcpy(*dst + accu, cid.c_str(), cid.length());
+        accu += cid.length() + 1;
+    }
+    cid = sender->get_id();
+    std::memcpy(*dst + accu, cid.c_str(), cid.length());
+    accu += cid.length() + 1;
+    cid = receiver->get_id();
+    std::memcpy(*dst + accu, cid.c_str(), cid.length());
+    accu += cid.length() + 1;
+    std::memcpy(*dst + accu, forwardid.c_str(), forwardid.length());
+    accu += cid.length() + 1;
+    std::memcpy(*dst + accu, time_str.c_str(), time_str.length());
+
+    return len;
+}
 
 SqlTransaction::SqlTransaction(const std::string &expr, sqlite3 *db)
     : closed(false) {

@@ -2,6 +2,7 @@
 #include <argon2.h>
 #include <log.h>
 #include <nanoid.h>
+#include <ranges>
 
 #define PASSWORD_HASH_BYTES 64
 #define PASSWORD_HASH_SALT "DIuL4dPTcL3q1a7EFOF9f"
@@ -61,10 +62,10 @@ void ServerOrm::pull() {
     }
     delete t;
 }
-std::vector<Entity *> ServerOrm::get_contacts(const User &owner) const {
+std::vector<Entity *> ServerOrm::get_contacts(const User *owner) const {
     std::vector<Entity *> ev;
     for (auto e : contacts) {
-        if (*e.first == owner) {
+        if (*e.first == *owner) {
             ev.push_back(e.second);
         }
     }
@@ -160,11 +161,12 @@ TiServer::TiServer(std::string addr, short port, const std::string &dbfile)
 TiServer::~TiServer() = default;
 Client *TiServer::on_connect(sockaddr_in addr) { return new TiClient(db); }
 
-std::vector<std::string> read_message_body(const char *data, size_t len) {
+std::vector<std::string> read_message_body(const char *data, size_t len,
+                                           char separator = '\0') {
     int i = 0, j = 0;
     std::vector<std::string> heap;
     while (i < len) {
-        if (data[i] == '\0') {
+        if (data[i] == separator) {
             std::string substr(data + j, i - j);
             heap.push_back(substr);
             j = i + 1;
@@ -201,6 +203,11 @@ void TiClient::on_message(ti::RequestCode req, char *data, size_t len) {
              body[1].c_str());
         user_register(body[0], body[1]);
         break;
+    case SYNC:
+        logD("[client %s] sync(%s, %s)", id.c_str(), body[0].c_str(),
+             body[1].c_str());
+        sync(body[0], body[1]);
+        break;
     case DELETE_USER:
         logD("[client %s] delete_user(%s)", id.c_str(), body[0].c_str());
         user_delete(body[0]);
@@ -231,9 +238,7 @@ void TiClient::user_login(const std::string &user_id,
 }
 
 void TiClient::user_delete(const std::string &curr_token) {
-    if (user == nullptr) {
-        send(ResponseCode::NOT_FOUND);
-    } else if (token != curr_token) {
+    if (token != curr_token || user == nullptr) {
         send(ResponseCode::TOKEN_EXPIRED);
     } else {
         try {
@@ -251,7 +256,167 @@ void TiClient::reconnect(const std::string &old_token) {
         send(ti::ResponseCode::NOT_FOUND);
     } else {
         token = old_token;
-        send(ti::ResponseCode::OK);
+        auto res = user->get_id();
+        send(ti::ResponseCode::OK, (void *)res.c_str(), res.length());
+    }
+}
+
+size_t serialize_frame(Frame *frame, char **buf) {
+    if (auto *text = dynamic_cast<TextFrame *>(frame)) {
+    } else {
+        throw std::runtime_error("unsupported frame type");
+    }
+}
+
+size_t serialize_message(Message *msg, char **buf) {
+
+}
+size_t serialize_entity(Entity *entity, char **buf) {}
+
+size_t memappend(char **src, size_t src_count, size_t *src_len, char *dest) {
+    size_t sum = 0;
+    for (size_t i = 0; i < src_count; ++i) {
+        std::memcpy(dest + sum, src, src_len[i]);
+        sum += src_len[0];
+    }
+    return sum;
+}
+
+#pragma clang diagnostic push
+#pragma ide diagnostic ignored "NullDereference"
+int write_sync_response(char **buf, std::vector<Entity *> *entities,
+                        std::vector<Frame *> *frames,
+                        std::vector<Message *> *messages) {
+    size_t frames_mask = frames != nullptr ? 1 : 0,
+           messages_mask = messages != nullptr ? 1 : 0,
+           entities_mask = entities != nullptr ? 1 : 0;
+    char *frame_bufs[frames_mask * frames->size()],
+        *msg_bufs[messages_mask * messages->size()],
+        *entity_bufs[entities_mask * entities->size()];
+    size_t frame_lens[frames_mask * frames->size()],
+        msg_lens[messages_mask * messages->size()],
+        entity_lens[entities_mask * entities->size()];
+    size_t sending_len = 0;
+    for (int i = 0; i < entities_mask * entities->size(); i++) {
+        entity_lens[i] = serialize_entity((*entities)[i], &entity_bufs[i]);
+        sending_len += entity_lens[i];
+    }
+    for (int i = 0; i < frames_mask * frames->size(); i++) {
+        frame_lens[i] = serialize_frame((*frames)[i], &frame_bufs[i]);
+        sending_len += frame_lens[i];
+    }
+    for (int i = 0; i < messages_mask * messages->size(); i++) {
+        msg_lens[i] = serialize_message((*messages)[i], &msg_bufs[i]);
+        sending_len += msg_lens[i];
+    }
+
+    char *sending_buf = (char *)calloc(
+        sending_len +
+            (entities_mask + frames_mask + messages_mask) * BYTES_LEN_HEADER,
+        sizeof(char));
+    sending_len = 0;
+    if (entities_mask) {
+        auto len_header = write_len_header(entities->size());
+        std::memcpy(sending_buf, len_header, BYTES_LEN_HEADER);
+        sending_len += BYTES_LEN_HEADER;
+        sending_len +=
+            memappend(entity_bufs, entities->size(), entity_lens, sending_buf);
+        delete len_header;
+    }
+    if (frames_mask) {
+        auto len_header = write_len_header(frames->size());
+        std::memcpy(sending_buf + sending_len, len_header, BYTES_LEN_HEADER);
+        sending_len += memappend(frame_bufs, frames->size(), frame_lens,
+                                 sending_buf + sending_len);
+        delete len_header;
+    }
+    if (messages_mask) {
+        auto len_header = write_len_header(messages->size());
+        std::memcpy(sending_buf + sending_len, len_header, BYTES_LEN_HEADER);
+        memappend(msg_bufs, messages->size(), msg_lens,
+                  sending_buf + sending_len);
+        delete len_header;
+    }
+    *buf = sending_buf;
+    return sending_len;
+}
+#pragma clang diagnostic pop
+
+void TiClient::sync(const std::string &curr_token,
+                    const std::string &selector) {
+    if (curr_token != token || user == nullptr) {
+        send(ResponseCode::TOKEN_EXPIRED);
+    } else {
+        auto paths =
+            read_message_body(selector.c_str(), selector.length(), '/');
+        if (paths[0] == "*") {
+            auto contacts = db.get_contacts(user);
+            std::vector<std::string> group_ids;
+            std::transform(
+                std::find_if(contacts.begin(), contacts.end(),
+                             [&](Entity *ctc) {
+                                 return (dynamic_cast<Group *>(ctc) != nullptr);
+                             }),
+                contacts.end(), std::back_inserter(group_ids),
+                [&](Entity *e) { return e->get_id(); });
+            auto all_messages = db.get_messages();
+            auto messages = std::vector<Message *>(
+                std::find_if(all_messages.begin(), all_messages.end(),
+                             [&](Message *msg) {
+                                 if (msg->get_receiver() == user) {
+                                     return true;
+                                 }
+                                 return std::find(
+                                            group_ids.begin(), group_ids.end(),
+                                            msg->get_receiver()->get_id()) !=
+                                        group_ids.end();
+                             }),
+                all_messages.end());
+            std::vector<Frame *> frames;
+            for (auto msg : messages) {
+                std::copy_if(msg->get_frames().begin(), msg->get_frames().end(),
+                             std::back_inserter(frames), [&](Frame *frame) {
+                                 return std::find(frames.begin(), frames.end(),
+                                                  frame) == frames.end();
+                             });
+            }
+            char *buf;
+            size_t len =
+                write_sync_response(&buf, &contacts, &frames, &messages);
+            send(ResponseCode::OK, buf, len);
+        } else if (Entity *entity = db.get_entity(paths[0])) {
+            if (paths.size() < 2 || paths[1] == "*") {
+                char *buf;
+                size_t len = serialize_entity(entity, &buf);
+                send(ResponseCode::OK, buf, len);
+            } else if (paths[1] == "id") {
+                send(ResponseCode::OK, (void *)paths[0].c_str(),
+                     paths[0].length());
+            } else if (paths[1] == "name") {
+                std::string name;
+                if (auto *u = dynamic_cast<User *>(entity)) {
+                    name = u->get_name();
+                } else if (auto *g = dynamic_cast<Group *>(entity)) {
+                    name = g->get_name();
+                } else {
+                    send(ResponseCode::BAD_REQUEST);
+                    return;
+                }
+                send(ResponseCode::OK, (void *)name.c_str(), name.length());
+            } else if (paths[1] == "bio") {
+                if (auto *u = dynamic_cast<User *>(entity)) {
+                    send(ResponseCode::OK, (void *)u->get_bio().c_str(),
+                         u->get_bio().length());
+                } else {
+                    send(ResponseCode::BAD_REQUEST);
+                }
+            } else if (paths[1] == "members") {
+            }
+        } else if (Message *message = db.get_message(paths[0])) {
+
+        } else {
+            send(ResponseCode::NOT_FOUND);
+        }
     }
 }
 
@@ -265,8 +430,8 @@ void TiClient::determine(const std::string &curr_token, int token_id) {
     }
 }
 
-void TiClient::logout(const std::string &old_token) {
-    if (token.empty() || user == nullptr) {
+void TiClient::logout(const std::string &curr_token) {
+    if (token != curr_token || user == nullptr) {
         send(ResponseCode::TOKEN_EXPIRED);
     } else if (db.invalidate_token(token, user)) {
         send(ResponseCode::OK);
