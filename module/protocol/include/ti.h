@@ -24,6 +24,7 @@ class Entity : BinarySerializable {
   public:
     virtual std::string get_id() const = 0;
     bool operator==(const Entity &other) const;
+    size_t serialize(char **dst) const override = 0;
 };
 
 class Server : public Entity {
@@ -65,6 +66,7 @@ class Frame : BinarySerializable {
   public:
     virtual std::string to_string() const = 0;
     virtual std::string get_id() const = 0;
+    size_t serialize(char **dst) const override = 0;
 };
 
 class TextFrame : public Frame {

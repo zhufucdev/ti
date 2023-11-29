@@ -261,18 +261,6 @@ void TiClient::reconnect(const std::string &old_token) {
     }
 }
 
-size_t serialize_frame(Frame *frame, char **buf) {
-    if (auto *text = dynamic_cast<TextFrame *>(frame)) {
-    } else {
-        throw std::runtime_error("unsupported frame type");
-    }
-}
-
-size_t serialize_message(Message *msg, char **buf) {
-
-}
-size_t serialize_entity(Entity *entity, char **buf) {}
-
 size_t memappend(char **src, size_t src_count, size_t *src_len, char *dest) {
     size_t sum = 0;
     for (size_t i = 0; i < src_count; ++i) {
@@ -284,7 +272,7 @@ size_t memappend(char **src, size_t src_count, size_t *src_len, char *dest) {
 
 #pragma clang diagnostic push
 #pragma ide diagnostic ignored "NullDereference"
-int write_sync_response(char **buf, std::vector<Entity *> *entities,
+size_t write_sync_response(char **buf, std::vector<Entity *> *entities,
                         std::vector<Frame *> *frames,
                         std::vector<Message *> *messages) {
     size_t frames_mask = frames != nullptr ? 1 : 0,
@@ -298,15 +286,15 @@ int write_sync_response(char **buf, std::vector<Entity *> *entities,
         entity_lens[entities_mask * entities->size()];
     size_t sending_len = 0;
     for (int i = 0; i < entities_mask * entities->size(); i++) {
-        entity_lens[i] = serialize_entity((*entities)[i], &entity_bufs[i]);
+        entity_lens[i] = (*entities)[i]->serialize(&entity_bufs[i]);
         sending_len += entity_lens[i];
     }
     for (int i = 0; i < frames_mask * frames->size(); i++) {
-        frame_lens[i] = serialize_frame((*frames)[i], &frame_bufs[i]);
+        frame_lens[i] = (*frames)[i]->serialize(&frame_bufs[i]);
         sending_len += frame_lens[i];
     }
     for (int i = 0; i < messages_mask * messages->size(); i++) {
-        msg_lens[i] = serialize_message((*messages)[i], &msg_bufs[i]);
+        msg_lens[i] = (*messages)[i]->serialize(&msg_bufs[i]);
         sending_len += msg_lens[i];
     }
 
@@ -387,7 +375,7 @@ void TiClient::sync(const std::string &curr_token,
         } else if (Entity *entity = db.get_entity(paths[0])) {
             if (paths.size() < 2 || paths[1] == "*") {
                 char *buf;
-                size_t len = serialize_entity(entity, &buf);
+                size_t len = entity->serialize(&buf);
                 send(ResponseCode::OK, buf, len);
             } else if (paths[1] == "id") {
                 send(ResponseCode::OK, (void *)paths[0].c_str(),
