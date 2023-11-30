@@ -11,6 +11,8 @@
 using namespace ti::server;
 using namespace ti;
 
+#pragma clang diagnostic push
+#pragma ide diagnostic ignored "performance-unnecessary-value-param"
 char *hash_password(std::string passcode) {
     char *encryption = (char *)calloc(PASSWORD_HASH_BYTES, sizeof(char));
     hash_argon2i(encryption, PASSWORD_HASH_BYTES, passcode.c_str(),
@@ -18,6 +20,7 @@ char *hash_password(std::string passcode) {
                  4, 1 << 16);
     return encryption;
 }
+#pragma clang diagnostic pop
 
 ServerOrm::ServerOrm(const std::string &dbfile) : TiOrm(dbfile) {
     logD("[server orm] executing initializing SQL");
@@ -161,25 +164,6 @@ TiServer::TiServer(std::string addr, short port, const std::string &dbfile)
 TiServer::~TiServer() = default;
 Client *TiServer::on_connect(sockaddr_in addr) { return new TiClient(db); }
 
-std::vector<std::string> read_message_body(const char *data, size_t len,
-                                           char separator = '\0') {
-    int i = 0, j = 0;
-    std::vector<std::string> heap;
-    while (i < len) {
-        if (data[i] == separator) {
-            std::string substr(data + j, i - j);
-            heap.push_back(substr);
-            j = i + 1;
-        }
-        i++;
-    }
-    if (j != i) {
-        std::string substr(data + j, len - j);
-        heap.push_back(substr);
-    }
-    return heap;
-}
-
 TiClient::TiClient(ServerOrm &db)
     : db(db), user(nullptr), token(), id(nanoid::generate()) {}
 TiClient::~TiClient() = default;
@@ -273,11 +257,11 @@ size_t memappend(char **src, size_t src_count, size_t *src_len, char *dest) {
 #pragma clang diagnostic push
 #pragma ide diagnostic ignored "NullDereference"
 size_t write_sync_response(char **buf, std::vector<Entity *> *entities,
-                        std::vector<Frame *> *frames,
-                        std::vector<Message *> *messages) {
-    size_t frames_mask = frames != nullptr ? 1 : 0,
-           messages_mask = messages != nullptr ? 1 : 0,
-           entities_mask = entities != nullptr ? 1 : 0;
+                           std::vector<Frame *> *frames,
+                           std::vector<Message *> *messages) {
+    int frames_mask = frames != nullptr ? 1 : 0,
+        messages_mask = messages != nullptr ? 1 : 0,
+        entities_mask = entities != nullptr ? 1 : 0;
     char *frame_bufs[frames_mask * frames->size()],
         *msg_bufs[messages_mask * messages->size()],
         *entity_bufs[entities_mask * entities->size()];

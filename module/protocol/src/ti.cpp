@@ -9,6 +9,42 @@
 using namespace ti;
 using namespace orm;
 
+std::vector<std::string> read_message_body(const char *data, size_t len,
+                                           char separator = '\0') {
+    int i = 0, j = 0;
+    std::vector<std::string> heap;
+    while (i < len) {
+        if (data[i] == separator) {
+            std::string substr(data + j, i - j);
+            heap.push_back(substr);
+            j = i + 1;
+        }
+        i++;
+    }
+    if (j != i) {
+        std::string substr(data + j, len - j);
+        heap.push_back(substr);
+    }
+    return heap;
+}
+
+template <class InputIterator>
+InputIterator get_entity_in(InputIterator first, InputIterator last,
+                            const std::string &id) {
+    for (; first != last; first++) {
+        if ((*first)->get_id() == id) {
+            return first;
+        }
+    }
+    throw std::runtime_error("specific entity not found");
+}
+
+void fail_if_bsid_not(BSID expected, BSID actual) {
+    if (actual != expected) {
+        throw std::runtime_error("unsupported BSID: " + std::to_string(actual));
+    }
+}
+
 char *ti::write_len_header(size_t len) {
     char *tsize = (char *)calloc(BYTES_LEN_HEADER, sizeof(char));
     int n = BYTES_LEN_HEADER - sizeof(len);
@@ -30,7 +66,7 @@ size_t ti::read_len_header(const char *tsize) {
 }
 
 std::string ti::to_iso_time(const std::time_t &time) {
-    char buf[sizeof "2011-10-08T07:07:09Z"];
+    char buf[sizeof "0000-00-00T00:00:00Z"]; // i hate magic numbers
     strftime(buf, sizeof buf, "%FT%TZ", gmtime(&time));
     return buf;
 }
@@ -59,8 +95,9 @@ Server::Server() = default;
 std::string Server::get_id() const { return "zGuEzyj3EUyeSKAvHw3Zo"; }
 size_t Server::serialize(char **dst) const {
     auto id = get_id();
-    *dst = (char *)calloc(id.length() + 1, sizeof(char));
-    std::memcpy(*dst, id.c_str(), id.length());
+    *dst = (char *)calloc(id.length() + 2, sizeof(char));
+    (*dst)[0] = BSID::ENTY_SRV;
+    std::memcpy(*dst + 1, id.c_str(), id.length());
     return id.length() + 1;
 }
 
@@ -74,8 +111,9 @@ time_t User::get_registration_time() const { return registration_time; }
 size_t User::serialize(char **dst) const {
     auto reg_time = ti::to_iso_time(registration_time);
     auto len =
-        id.length() + name.length() + bio.length() + reg_time.length() + 4;
+        id.length() + name.length() + bio.length() + reg_time.length() + 5;
     *dst = (char *)calloc(len, sizeof(char));
+    (*dst)[0] = BSID::ENTY_USR;
     std::memcpy(*dst, id.c_str(), id.length());
     std::memcpy(*dst + id.length() + 1, name.c_str(), name.length());
     std::memcpy(*dst + id.length() + name.length() + 2, bio.c_str(),
@@ -84,18 +122,31 @@ size_t User::serialize(char **dst) const {
                 reg_time.length());
     return len;
 }
+User *User::deserialize(char *src, size_t len) {
+    if (len <= 0) {
+        return nullptr;
+    }
+    fail_if_bsid_not(BSID::ENTY_USR, (BSID)src[0]);
+    auto args = read_message_body(src + 1, len - 1);
+    if (args.size() != 4) {
+        throw std::runtime_error("unexpected size (deserializing User)");
+    }
+    return new User(args[0], args[1], args[2], parse_iso_time(args[3]));
+}
 
-Group::Group(std::string id, std::string name, std::vector<Entity *> members)
-    : id(std::move(id)), name(std::move(name)), members(std::move(members)) {}
+Group::Group(const std::string &id, const std::string &name,
+             const std::vector<Entity *> &members)
+    : id(id), name(name), members(members) {}
 std::string Group::get_name() { return name; }
 std::string Group::get_id() const { return id; }
 std::vector<Entity *> &Group::get_members() { return members; }
 size_t Group::serialize(char **dst) const {
-    auto len = name.length() + id.length() + members.size() + 2;
+    auto len = name.length() + id.length() + members.size() + 3;
     std::accumulate(
         members.begin(), members.end(), len,
         [&](size_t l, const Entity *e) { return l + e->get_id().length(); });
     *dst = (char *)calloc(len, sizeof(char));
+    (*dst)[0] = ENTY_GRP;
     std::memcpy(*dst, id.c_str(), id.length());
     std::memcpy(*dst + id.length() + 1, name.c_str(), name.length());
     auto p = id.length() + name.length() + 2;
@@ -106,24 +157,53 @@ size_t Group::serialize(char **dst) const {
     }
     return len;
 }
+Group *Group::deserialize(char *src, size_t len,
+                          const std::vector<Entity *> &entities) {
+    if (len <= 0) {
+        return nullptr;
+    }
+    fail_if_bsid_not(BSID::ENTY_GRP, (BSID)src[0]);
+    auto args = read_message_body(src + 1, len - 1);
+    if (args.size() < 2) {
+        throw std::runtime_error("unexpected size (deserializing Group)");
+    }
+    std::vector<Entity *> members;
+    std::transform(
+        args.begin() + 2, args.end(), std::back_inserter(members), [&](auto t) {
+            return *get_entity_in(entities.begin(), entities.end(), t);
+        });
+    return new Group(args[0], args[1], members);
+}
 
 TextFrame::TextFrame(std::string id, std::string content)
     : id(std::move(id)), content(std::move(content)) {}
 std::string TextFrame::get_id() const { return id; }
 std::string TextFrame::to_string() const { return content; }
 size_t TextFrame::serialize(char **dst) const {
-    auto len = id.length() + content.length() + 2;
+    auto len = id.length() + content.length() + 3;
     *dst = (char *)calloc(len, sizeof(char));
+    (*dst)[0] = BSID::FRM_TXT;
     std::memcpy(*dst, id.c_str(), id.length());
     std::memcpy(*dst + id.length() + 1, content.c_str(), content.length());
     return len;
 }
+TextFrame *TextFrame::deserialize(char *src, size_t len) {
+    if (len <= 0) {
+        return nullptr;
+    }
+    fail_if_bsid_not(BSID::FRM_TXT, (BSID)src[0]);
+    auto args = read_message_body(src + 1, len - 1);
+    if (args.size() != 2) {
+        throw std::runtime_error("unexpected size (deserializing TextFrame)");
+    }
+    return new TextFrame(args[0], args[1]);
+}
 
-Message::Message(std::string id, std::vector<Frame *> content, std::time_t time,
-                 ti::Entity *sender, ti::Entity *receiver,
+Message::Message(const std::string &id, const std::vector<Frame *> &content,
+                 std::time_t time, ti::Entity *sender, ti::Entity *receiver,
                  ti::Entity *forwared_from)
-    : id(std::move(id)), frames(std::move(content)), time(time), sender(sender),
-      receiver(receiver), forwarded_from(forwared_from) {}
+    : id(id), frames(content), time(time), sender(sender), receiver(receiver),
+      forwarded_from(forwared_from) {}
 const std::vector<Frame *> &Message::get_frames() const { return frames; }
 std::string Message::get_id() const { return id; }
 Entity *Message::get_sender() const { return sender; }
@@ -168,6 +248,45 @@ size_t Message::serialize(char **dst) const {
     std::memcpy(*dst + accu, time_str.c_str(), time_str.length());
 
     return len;
+}
+Message *Message::deserialize(char *src, size_t len,
+                              const std::vector<Frame *> &frames,
+                              const std::vector<Entity *> &entities) {
+    int ptr = 0;
+    for (; ptr < len; ptr++) {
+        if (src[ptr] == 0) {
+            break;
+        }
+    }
+    std::string id(src, src + ptr);
+    ptr++;
+    auto frame_count = read_len_header(src + ptr);
+    std::vector<Frame *> content(frame_count);
+    ptr += BYTES_LEN_HEADER;
+    auto preptr = ptr;
+    for (int i = 0; i < frame_count; ++i) {
+        for (; ptr < len; ptr++) {
+            if (src[ptr] == 0) {
+                break;
+            }
+        }
+        std::string id(src + preptr, src + ptr);
+        content[i] = *get_entity_in(frames.begin(), frames.end(), id);
+        if (content[i] == nullptr) {
+            throw std::runtime_error("no such frame (deserializing Message)");
+        }
+        preptr = ++ptr;
+    }
+
+    auto args = read_message_body(src + ptr, len - ptr);
+    if (args.size() != 4) {
+        throw std::runtime_error("unexpected size (deserializing Message)");
+    }
+    return new Message(
+        id, content, parse_iso_time(args[3]),
+        *get_entity_in(entities.begin(), entities.end(), args[0]),
+        *get_entity_in(entities.begin(), entities.end(), args[1]),
+        *get_entity_in(entities.begin(), entities.end(), args[2]));
 }
 
 SqlTransaction::SqlTransaction(const std::string &expr, sqlite3 *db)
@@ -309,15 +428,6 @@ TiOrm::TiOrm(const ti::orm::TiOrm &t) : SqlDatabase(t) {
     frames = t.frames;
     messages = t.messages;
 }
-template <typename T>
-T *get_entity_in(const std::vector<T *> &vec, const std::string &id) {
-    for (auto e : vec) {
-        if (e->get_id() == id) {
-            return e;
-        }
-    }
-    throw std::runtime_error("specific entity not found");
-}
 TiOrm::TiOrm(const std::string &dbfile) : SqlDatabase(dbfile) {
     logD("[orm] executing initializing SQL");
     exec_sql(R"(CREATE TABLE IF NOT EXISTS "user"
@@ -373,9 +483,11 @@ void TiOrm::pull() {
             R"(SELECT "contained_id" FROM "box" WHERE container_id = ?)");
         tr->bind_text(0, row.get_text(0));
         std::vector<Entity *> members;
-        std::transform(
-            tr->begin(), tr->end(), std::back_inserter(members),
-            [&](Row r) { return get_entity_in(entities, r.get_text(0)); });
+        std::transform(tr->begin(), tr->end(), std::back_inserter(members),
+                       [&](Row r) {
+                           return *get_entity_in(entities.begin(),
+                                                 entities.end(), r.get_text(0));
+                       });
         entities.push_back(
             new Group(row.get_text(0), row.get_text(1), members));
     }
@@ -395,14 +507,16 @@ void TiOrm::pull() {
         auto tr =
             prepare(R"(SELECT contained_id FROM "box" WHERE container_id = ?)");
         tr->bind_text(0, row.get_text(0));
-        std::transform(
-            tr->begin(), tr->end(), std::back_inserter(content),
-            [&](Row r) { return get_entity_in(frames, r.get_text(0)); });
+        std::transform(tr->begin(), tr->end(), std::back_inserter(content),
+                       [&](Row r) {
+                           return *get_entity_in(frames.begin(), frames.end(),
+                                                 r.get_text(0));
+                       });
         messages.push_back(new Message(
             row.get_text(0), content, parse_iso_time(row.get_text(1)),
-            get_entity_in(entities, row.get_text(2)),
-            get_entity_in(entities, row.get_text(3)),
-            get_entity_in(entities, row.get_text(4))));
+            *get_entity_in(entities.begin(), entities.end(), row.get_text(2)),
+            *get_entity_in(entities.begin(), entities.end(), row.get_text(3)),
+            *get_entity_in(entities.begin(), entities.end(), row.get_text(4))));
     }
     delete t;
 }
@@ -471,7 +585,7 @@ void TiOrm::delete_entity(ti::Entity *entity) {
 }
 std::vector<Entity *> TiOrm::get_entities() const { return entities; }
 Entity *TiOrm::get_entity(const std::string &id) const {
-    return get_entity_in(entities, id);
+    return *get_entity_in(entities.begin(), entities.end(), id);
 }
 void TiOrm::add_frames(const std::vector<Frame *> &frm, Message *parent) {
     for (auto f : frm) {
@@ -497,7 +611,7 @@ void TiOrm::add_frames(const std::vector<Frame *> &frm, Message *parent) {
 }
 std::vector<Message *> TiOrm::get_messages() const { return messages; }
 Message *TiOrm::get_message(const std::string &id) {
-    return get_entity_in(messages, id);
+    return *get_entity_in(messages.begin(), messages.end(), id);
 }
 void TiOrm::add_message(ti::Message *msg) {
     messages.push_back(msg);

@@ -1,9 +1,9 @@
+#include "socketcompat.h"
+#include <ctime>
 #include <sqlite3.h>
+#include <stdexcept>
 #include <string>
 #include <vector>
-#include <ctime>
-#include <stdexcept>
-#include "socketcompat.h"
 
 #define BYTES_LEN_HEADER 8
 
@@ -14,17 +14,20 @@ char *write_len_header(size_t len);
 size_t read_len_header(const char *tsize);
 std::string to_iso_time(const std::time_t &time);
 std::time_t parse_iso_time(const std::string &str);
+std::vector<std::string> read_message_body(const char *data, size_t len,
+                                           char separator = '\0');
 
 class BinarySerializable {
   public:
     virtual size_t serialize(char **dst) const = 0;
 };
 
-class Entity : BinarySerializable {
+enum BSID { ENTY_SRV = 0x00, ENTY_USR, ENTY_GRP, FRM_TXT = 0x40 };
+
+class Entity : public BinarySerializable {
   public:
     virtual std::string get_id() const = 0;
     bool operator==(const Entity &other) const;
-    size_t serialize(char **dst) const override = 0;
 };
 
 class Server : public Entity {
@@ -39,14 +42,15 @@ class User : public Entity {
     time_t registration_time;
 
   public:
-    User(const std::string &id, const std::string &name,
-         const std::string &bio, time_t registration_time);
+    User(const std::string &id, const std::string &name, const std::string &bio,
+         time_t registration_time);
 
     std::string get_id() const override;
     std::string get_name() const;
     std::string get_bio() const;
     time_t get_registration_time() const;
     size_t serialize(char **dst) const override;
+    static User *deserialize(char *src, size_t len);
 };
 
 class Group : public Entity {
@@ -54,19 +58,21 @@ class Group : public Entity {
     std::vector<Entity *> members;
 
   public:
-    Group(std::string id, std::string name, std::vector<Entity *> members);
+    Group(const std::string &id, const std::string &name,
+          const std::vector<Entity *> &members);
 
     std::string get_id() const override;
     std::string get_name();
     std::vector<Entity *> &get_members();
     size_t serialize(char **dst) const override;
+    static Group *deserialize(char *src, size_t len,
+                              const std::vector<Entity *> &entities);
 };
 
-class Frame : BinarySerializable {
+class Frame : public BinarySerializable {
   public:
     virtual std::string to_string() const = 0;
     virtual std::string get_id() const = 0;
-    size_t serialize(char **dst) const override = 0;
 };
 
 class TextFrame : public Frame {
@@ -78,16 +84,17 @@ class TextFrame : public Frame {
     std::string get_id() const override;
     std::string to_string() const override;
     size_t serialize(char **dst) const override;
+    static TextFrame *deserialize(char *src, size_t len);
 };
 
-class Message : BinarySerializable {
+class Message : public BinarySerializable {
     std::vector<Frame *> frames;
     Entity *sender, *receiver, *forwarded_from;
     std::string id;
     std::time_t time;
 
   public:
-    Message(std::string id, std::vector<Frame *> content, std::time_t time,
+    Message(const std::string &id, const std::vector<Frame *> &content, std::time_t time,
             Entity *sender, Entity *receiver, Entity *forwared_from);
     const std::vector<Frame *> &get_frames() const;
     std::string get_id() const;
@@ -96,6 +103,9 @@ class Message : BinarySerializable {
     Entity *get_forward_source() const;
     std::time_t get_time() const;
     size_t serialize(char **dst) const override;
+    static Message *deserialize(char *src, size_t len,
+                                const std::vector<Frame *> &frames,
+                                const std::vector<Entity *> &entities);
 };
 
 enum RequestCode {
