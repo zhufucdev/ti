@@ -9,8 +9,8 @@
 using namespace ti;
 using namespace orm;
 
-std::vector<std::string> read_message_body(const char *data, size_t len,
-                                           char separator = '\0') {
+std::vector<std::string> ti::read_message_body(const char *data, size_t len,
+                                               char separator) {
     int i = 0, j = 0;
     std::vector<std::string> heap;
     while (i < len) {
@@ -32,7 +32,7 @@ template <class InputIterator>
 InputIterator get_entity_in(InputIterator first, InputIterator last,
                             const std::string &id) {
     for (; first != last; first++) {
-        if ((*first)->get_id() == id) {
+        if (*first != nullptr && (*first)->get_id() == id) {
             return first;
         }
     }
@@ -114,9 +114,9 @@ size_t User::serialize(char **dst) const {
         id.length() + name.length() + bio.length() + reg_time.length() + 5;
     *dst = (char *)calloc(len, sizeof(char));
     (*dst)[0] = BSID::ENTY_USR;
-    std::memcpy(*dst, id.c_str(), id.length());
-    std::memcpy(*dst + id.length() + 1, name.c_str(), name.length());
-    std::memcpy(*dst + id.length() + name.length() + 2, bio.c_str(),
+    std::memcpy(*dst + 1, id.c_str(), id.length());
+    std::memcpy(*dst + id.length() + 2, name.c_str(), name.length());
+    std::memcpy(*dst + id.length() + name.length() + 3, bio.c_str(),
                 bio.length());
     std::memcpy(*dst + len - reg_time.length() - 1, reg_time.c_str(),
                 reg_time.length());
@@ -142,14 +142,14 @@ std::string Group::get_id() const { return id; }
 std::vector<Entity *> &Group::get_members() { return members; }
 size_t Group::serialize(char **dst) const {
     auto len = name.length() + id.length() + members.size() + 3;
-    std::accumulate(
-        members.begin(), members.end(), len,
+    len += std::accumulate(
+        members.begin(), members.end(), 0,
         [&](size_t l, const Entity *e) { return l + e->get_id().length(); });
     *dst = (char *)calloc(len, sizeof(char));
     (*dst)[0] = ENTY_GRP;
-    std::memcpy(*dst, id.c_str(), id.length());
-    std::memcpy(*dst + id.length() + 1, name.c_str(), name.length());
-    auto p = id.length() + name.length() + 2;
+    std::memcpy(*dst + 1, id.c_str(), id.length());
+    std::memcpy(*dst + id.length() + 2, name.c_str(), name.length());
+    auto p = id.length() + name.length() + 3;
     for (auto e : members) {
         auto mid = e->get_id();
         std::memcpy(*dst + p, mid.c_str(), mid.length());
@@ -183,8 +183,8 @@ size_t TextFrame::serialize(char **dst) const {
     auto len = id.length() + content.length() + 3;
     *dst = (char *)calloc(len, sizeof(char));
     (*dst)[0] = BSID::FRM_TXT;
-    std::memcpy(*dst, id.c_str(), id.length());
-    std::memcpy(*dst + id.length() + 1, content.c_str(), content.length());
+    std::memcpy(*dst + 1, id.c_str(), id.length());
+    std::memcpy(*dst + id.length() + 2, content.c_str(), content.length());
     return len;
 }
 TextFrame *TextFrame::deserialize(char *src, size_t len) {
@@ -217,7 +217,7 @@ size_t Message::serialize(char **dst) const {
     size_t len = id.length() + BYTES_LEN_HEADER + sender->get_id().length() +
                  forwardid.length() + receiver->get_id().length() +
                  time_str.length() + 4;
-    std::accumulate(frames.begin(), frames.end(), len, [](auto a, auto e) {
+    len += std::accumulate(frames.begin(), frames.end(), 0, [](auto a, auto e) {
         return a + e->get_id().length() + 1;
     });
     *dst = (char *)calloc(len, sizeof(char));
@@ -244,7 +244,7 @@ size_t Message::serialize(char **dst) const {
     std::memcpy(*dst + accu, cid.c_str(), cid.length());
     accu += cid.length() + 1;
     std::memcpy(*dst + accu, forwardid.c_str(), forwardid.length());
-    accu += cid.length() + 1;
+    accu += forwardid.length() + 1;
     std::memcpy(*dst + accu, time_str.c_str(), time_str.length());
 
     return len;
@@ -270,8 +270,8 @@ Message *Message::deserialize(char *src, size_t len,
                 break;
             }
         }
-        std::string id(src + preptr, src + ptr);
-        content[i] = *get_entity_in(frames.begin(), frames.end(), id);
+        std::string cid(src + preptr, src + ptr);
+        content[i] = *get_entity_in(frames.begin(), frames.end(), cid);
         if (content[i] == nullptr) {
             throw std::runtime_error("no such frame (deserializing Message)");
         }
@@ -286,7 +286,7 @@ Message *Message::deserialize(char *src, size_t len,
         id, content, parse_iso_time(args[3]),
         *get_entity_in(entities.begin(), entities.end(), args[0]),
         *get_entity_in(entities.begin(), entities.end(), args[1]),
-        *get_entity_in(entities.begin(), entities.end(), args[2]));
+        args[2].length() <= 0 ? nullptr : *get_entity_in(entities.begin(), entities.end(), args[2]));
 }
 
 SqlTransaction::SqlTransaction(const std::string &expr, sqlite3 *db)
