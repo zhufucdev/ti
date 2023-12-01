@@ -361,6 +361,7 @@ void TiClient::sync(const std::string &curr_token,
                 char *buf;
                 size_t len = entity->serialize(&buf);
                 send(ResponseCode::OK, buf, len);
+                delete buf;
             } else if (paths[1] == "id") {
                 send(ResponseCode::OK, (void *)paths[0].c_str(),
                      paths[0].length());
@@ -383,9 +384,66 @@ void TiClient::sync(const std::string &curr_token,
                     send(ResponseCode::BAD_REQUEST);
                 }
             } else if (paths[1] == "members") {
+                if (auto *g = dynamic_cast<Group *>(entity)) {
+                    size_t len = std::accumulate(
+                        g->get_members().begin(), g->get_members().end(), 0,
+                        [&](auto l, auto e) {
+                            return l + e->get_id().length() + 1;
+                        });
+                    char *buf = (char *)calloc(len, sizeof(char));
+                    size_t ptr = 0;
+                    for (auto e : g->get_members()) {
+                        auto cid = e->get_id();
+                        std::memcpy(buf + ptr, cid.c_str(), cid.length());
+                        ptr += cid.length() + 1;
+                    }
+                    send(ResponseCode::OK, (void *)buf, len);
+                    delete buf;
+                } else {
+                    send(ResponseCode::BAD_REQUEST);
+                }
             }
         } else if (Message *message = db.get_message(paths[0])) {
+            if (paths.size() < 2 || paths[1] == "*") {
+                char *bs;
+                auto len = message->serialize(&bs);
+                send(ResponseCode::OK, (void *)bs, len);
+            } else if (paths[1] == "frames") {
+                auto frames = message->get_frames();
+                char *frmbs[message->get_frames().size()];
+                size_t frmlens[message->get_frames().size()], frmstotallen = 0;
+                for (int i = 0; i < frames.size(); ++i) {
+                    frmlens[i] = frames[i]->serialize(frmbs + i);
+                    frmstotallen += frmlens[i];
+                }
 
+                char *bs = (char *)calloc(BYTES_LEN_HEADER + frmstotallen,
+                                          sizeof(char));
+                char *bf = write_len_header(frames.size());
+                std::memcpy(bs, bf, BYTES_LEN_HEADER);
+                delete bf;
+                size_t ptr = BYTES_LEN_HEADER;
+                for (int i = 0; i < frames.size(); ++i) {
+                    std::memcpy(bs + ptr, frmbs[i], frmlens[i]);
+                    ptr += frmlens[i];
+                }
+                send(ResponseCode::OK, (void *)bs,
+                     BYTES_LEN_HEADER + frmstotallen);
+                delete bs;
+            } else if (paths[1] == "id") {
+                send(ResponseCode::OK, (void *)paths[0].c_str(),
+                     paths[0].length());
+            } else if (paths[1] == "sender") {
+                auto cid = message->get_sender()->get_id();
+                send(ResponseCode::OK, (void *)cid.c_str(), cid.length());
+            } else if (paths[1] == "receiver") {
+                auto cid = message->get_receiver()->get_id();
+                send(ResponseCode::OK, (void *)cid.c_str(), cid.length());
+            } else if (paths[1] == "forward_source") {
+                auto src = message->get_forward_source();
+                auto cid = src == nullptr ? "" : src->get_id();
+                send(ResponseCode::OK, (void *)cid.c_str(), cid.length());
+            }
         } else {
             send(ResponseCode::NOT_FOUND);
         }
