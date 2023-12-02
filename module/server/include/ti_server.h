@@ -3,13 +3,11 @@
 namespace ti {
 namespace server {
 class ServerOrm : public orm::TiOrm {
-    std::vector<std::pair<User *, Entity *>> contacts;
     std::vector<std::pair<User *, std::string>> tokens;
 
   public:
     explicit ServerOrm(const std::string &dbfile);
     void pull() override;
-    std::vector<Entity *> get_contacts(const User *owner) const;
     bool check_password(const std::string &user_id, const std::string &passcode) const;
     User *check_token(const std::string &token) const;
     void add_token(ti::User *owner, const std::string &token);

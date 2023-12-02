@@ -36,7 +36,7 @@ InputIterator get_entity_in(InputIterator first, InputIterator last,
             return first;
         }
     }
-    throw std::runtime_error("specific entity not found");
+    return last;
 }
 
 void fail_if_bsid_not(BSID expected, BSID actual) {
@@ -210,6 +210,18 @@ Entity *Message::get_sender() const { return sender; }
 Entity *Message::get_receiver() const { return receiver; }
 Entity *Message::get_forward_source() const { return forwarded_from; }
 std::time_t Message::get_time() const { return time; }
+bool Message::is_visible_by(const ti::Entity *entity) {
+    if (receiver->get_id() == entity->get_id()) {
+        return true;
+    }
+    if (auto g = dynamic_cast<Group *>(receiver)) {
+        auto members = g->get_members();
+        return std::find_if(members.begin(), members.end(), [&](Entity *e) {
+                   return e->get_id() == entity->get_id();
+               }) != members.end();
+    }
+    return false;
+}
 size_t Message::serialize(char **dst) const {
     auto time_str = ti::to_iso_time(time);
     auto forwardid = forwarded_from == nullptr ? "" : forwarded_from->get_id();
@@ -286,7 +298,9 @@ Message *Message::deserialize(char *src, size_t len,
         id, content, parse_iso_time(args[3]),
         *get_entity_in(entities.begin(), entities.end(), args[0]),
         *get_entity_in(entities.begin(), entities.end(), args[1]),
-        args[2].length() <= 0 ? nullptr : *get_entity_in(entities.begin(), entities.end(), args[2]));
+        args[2].length() <= 0
+            ? nullptr
+            : *get_entity_in(entities.begin(), entities.end(), args[2]));
 }
 
 SqlTransaction::SqlTransaction(const std::string &expr, sqlite3 *db)
@@ -464,7 +478,14 @@ CREATE TABLE IF NOT EXISTS "box"
     container_id varchar(21) not null,
     contained_id varchar(21) not null,
     unique (contained_id, container_id)
-);)");
+);
+CREATE TABLE IF NOT EXISTS "contact"
+(
+    id         integer primary key,
+    owner_id   varchar(21) not null,
+    contact_id varchar(21) not null
+);
+)");
 }
 void TiOrm::pull() {
     entities.clear();
@@ -519,6 +540,14 @@ void TiOrm::pull() {
             *get_entity_in(entities.begin(), entities.end(), row.get_text(4))));
     }
     delete t;
+
+    contacts.clear();
+    t = prepare(R"(SELECT owner_id, contact_id FROM "contact")");
+    for (auto e : *t) {
+        contacts.emplace_back(get_user(e.get_text(0)),
+                              *get_entity_in(entities.begin(), entities.end(), e.get_text(1)));
+    }
+    delete t;
 }
 TiOrm::~TiOrm() = default;
 std::vector<User *> TiOrm::get_users() const {
@@ -538,6 +567,23 @@ User *TiOrm::get_user(const std::string &id) const {
         }
     }
     return nullptr;
+}
+std::vector<Entity *> TiOrm::get_contacts(const User *owner) const {
+    std::vector<Entity *> ev;
+    for (auto e : contacts) {
+        if (*e.first == *owner) {
+            ev.push_back(e.second);
+        }
+    }
+    return ev;
+}
+void TiOrm::add_contact(User *owner, Entity *contact) {
+    contacts.emplace_back(owner, contact);
+    auto t = prepare(R"(INSERT INTO "contact"(owner_id, contact_id) VALUES (?, ?))");
+    t->bind_text(0, owner->get_id());
+    t->bind_text(1, contact->get_id());
+    t->begin();
+    delete t;
 }
 void TiOrm::add_entity(Entity *entity) {
     entities.push_back(entity);

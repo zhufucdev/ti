@@ -102,6 +102,7 @@ class Message : public BinarySerializable {
     Entity *get_receiver() const;
     Entity *get_forward_source() const;
     std::time_t get_time() const;
+    bool is_visible_by(const Entity *entity);
     size_t serialize(char **dst) const override;
     static Message *deserialize(char *src, size_t len,
                                 const std::vector<Frame *> &frames,
@@ -191,6 +192,7 @@ class TiOrm : public SqlDatabase {
     std::vector<Entity *> entities;
     std::vector<Frame *> frames;
     std::vector<Message *> messages;
+    std::vector<std::pair<User *, Entity *>> contacts;
 
   public:
     explicit TiOrm(const std::string &dbfile);
@@ -199,6 +201,8 @@ class TiOrm : public SqlDatabase {
     virtual void pull();
     std::vector<User *> get_users() const;
     User *get_user(const std::string &id) const;
+    std::vector<Entity *> get_contacts(const User *owner) const;
+    void add_contact(User *owner, Entity *contact);
     void add_entity(Entity *entity);
     void delete_entity(Entity *entity);
     std::vector<Entity *> get_entities() const;

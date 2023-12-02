@@ -15,7 +15,7 @@ class TiClient : public Client, public orm::TiOrm {
     TiClient(std::string addr, short port, const std::string &dbfile);
     ~TiClient();
     TiClientState get_state();
-    bool try_reconnect();
+    bool try_reconnect() noexcept;
     bool reconnect(const std::string &new_token = {});
     bool sync();
     bool user_login(const std::string &user_id, const std::string &password);

@@ -24,55 +24,35 @@ char *hash_password(std::string passcode) {
 
 ServerOrm::ServerOrm(const std::string &dbfile) : TiOrm(dbfile) {
     logD("[server orm] executing initializing SQL");
-    exec_sql("CREATE TABLE IF NOT EXISTS \"password\"\n(\n"
-             "    user_id varchar(21) primary key not null,\n"
-             "    hash    blob                    not null,\n"
-             "    FOREIGN KEY (user_id)\n"
-             "        REFERENCES user (id)\n"
-             "        ON DELETE CASCADE\n"
-             ");\n"
-             "CREATE TABLE IF NOT EXISTS \"token\"\n"
-             "(\n"
-             "    id         int primary key,\n"
-             "    user_id    varchar(21) not null,\n"
-             "    token      varchar(21) not null,\n"
-             "    identifier varchar     not null,\n"
-             "    FOREIGN KEY (user_id)\n"
-             "        REFERENCES user (id)\n"
-             "        ON DELETE CASCADE\n"
-             ");\n"
-             "CREATE TABLE IF NOT EXISTS \"contact\"\n"
-             "(\n"
-             "    id         integer primary key,\n"
-             "    owner_id   varchar(21) not null,\n"
-             "    contact_id varchar(21) not null\n"
-             ");\n");
+    exec_sql(
+        R"(CREATE TABLE IF NOT EXISTS "password"
+(
+    user_id varchar(21) primary key not null,
+    hash    blob                    not null,
+    FOREIGN KEY (user_id)
+        REFERENCES user (id)
+        ON DELETE CASCADE
+);
+CREATE TABLE IF NOT EXISTS "token"
+(
+    id         int primary key,
+    user_id    varchar(21) not null,
+    token      varchar(21) not null,
+    identifier varchar     not null,
+    FOREIGN KEY (user_id)
+        REFERENCES user (id)
+        ON DELETE CASCADE
+);)"
+    );
 }
 void ServerOrm::pull() {
     orm::TiOrm::pull();
-    contacts.clear();
-    auto t = prepare("SELECT * FROM \"contact\"");
-    for (auto e : *t) {
-        contacts.emplace_back(get_user(e.get_text(0)),
-                              get_entity(e.get_text(1)));
-    }
-    delete t;
-
     tokens.clear();
-    t = prepare("SELECT user_id, token FROM \"token\"");
+    auto t = prepare("SELECT user_id, token FROM \"token\"");
     for (auto e : *t) {
         tokens.emplace_back(get_user(e.get_text(0)), e.get_text(1));
     }
     delete t;
-}
-std::vector<Entity *> ServerOrm::get_contacts(const User *owner) const {
-    std::vector<Entity *> ev;
-    for (auto e : contacts) {
-        if (*e.first == *owner) {
-            ev.push_back(e.second);
-        }
-    }
-    return ev;
 }
 bool ServerOrm::check_password(const std::string &user_id,
                                const std::string &passcode) const {

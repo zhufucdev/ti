@@ -16,7 +16,7 @@ TiClient::TiClient(std::string addr, short port, const std::string &dbfile)
     last_login datetime,
     foreign key (user_id)
         references user (id)
-))");
+);)");
 }
 TiClient::~TiClient() = default;
 void TiClient::on_message(char *data, size_t len) {}
@@ -33,13 +33,18 @@ void TiClient::on_close() {
     logD("[client] %s failed with code %d", method, code);                     \
     throw std::runtime_error("unknown response code")
 
-bool TiClient::try_reconnect() {
+bool TiClient::try_reconnect() noexcept {
     auto t = prepare(
         R"(SELECT "token" FROM "session" ORDER BY "last_login" DESC LIMIT 1)");
     for (auto row : *t) {
         token = row.get_text(0);
     }
-    return reconnect();
+    try {
+        return reconnect();
+    } catch (const std::exception &e) {
+        logD("[client] try reconnect failed: %s", e.what());
+        return false;
+    }
 }
 bool TiClient::reconnect(const std::string &new_token) {
     auto t = new_token.empty() ? token : new_token;
@@ -56,6 +61,7 @@ bool TiClient::reconnect(const std::string &new_token) {
         panic_unknown_res("reconnect", res.code);
     }
     userid = res.buff;
+    state = READY;
     if (!sync()) {
         logD("[client] warning: sync failed at reconnection");
     }
@@ -63,6 +69,7 @@ bool TiClient::reconnect(const std::string &new_token) {
 }
 
 bool TiClient::sync() {
+    panic_if_not(READY);
 
     return true;
 }
