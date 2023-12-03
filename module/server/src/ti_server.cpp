@@ -311,10 +311,6 @@ size_t write_sync_response(char **buf, std::vector<Entity *> *entities,
 }
 #pragma clang diagnostic pop
 
-template <class Iterator>
-Iterator get_messages_as(const User *owner, Iterator first, Iterator last,
-                         const std::vector<Entity *> &contacts) {}
-
 template <typename Iterator>
 size_t write_strings(Iterator first, Iterator last, char **buf) {
     size_t len = std::accumulate(
