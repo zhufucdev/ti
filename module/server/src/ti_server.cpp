@@ -42,8 +42,7 @@ CREATE TABLE IF NOT EXISTS "token"
     FOREIGN KEY (user_id)
         REFERENCES user (id)
         ON DELETE CASCADE
-);)"
-    );
+);)");
 }
 void ServerOrm::pull() {
     orm::TiOrm::pull();
@@ -135,6 +134,24 @@ void ServerOrm::add_user(ti::User *user, const std::string &passcode) {
     t->begin();
     delete t;
     delete hash;
+}
+std::vector<Message *> ServerOrm::get_messages(User *owner) const {
+    auto contacts = get_contacts(owner);
+    std::vector<std::string> group_ids;
+    std::transform(std::find_if(contacts.begin(), contacts.end(),
+                                [&](Entity *ctc) {
+                                    return (dynamic_cast<Group *>(ctc) !=
+                                            nullptr);
+                                }),
+                   contacts.end(), std::back_inserter(group_ids),
+                   [&](Entity *e) { return e->get_id(); });
+    std::vector<Message *> r;
+    for (auto msg : TiOrm::get_messages()) {
+        if (msg->is_visible_by(owner)) {
+            r.push_back(msg);
+        }
+    }
+    return r;
 }
 
 TiServer::TiServer(std::string addr, short port, const std::string &dbfile)
@@ -294,6 +311,38 @@ size_t write_sync_response(char **buf, std::vector<Entity *> *entities,
 }
 #pragma clang diagnostic pop
 
+template <class Iterator>
+Iterator get_messages_as(const User *owner, Iterator first, Iterator last,
+                         const std::vector<Entity *> &contacts) {}
+
+template <typename Iterator>
+size_t write_strings(Iterator first, Iterator last, char **buf) {
+    size_t len = std::accumulate(
+        first, last, 0, [&](auto a, auto e) { return e.length() + a; });
+    *buf = (char *)calloc(len, sizeof(char));
+    len = 0;
+    for (auto s = *first; first != last; first++) {
+        std::memcpy(*buf + len, s.c_str(), s.length());
+        len += s.length() + 1;
+    }
+    return len;
+}
+
+template <typename EntityIter>
+size_t write_entity_id(EntityIter first, EntityIter last, char **buf) {
+    size_t len = std::accumulate(first, last, 0, [&](auto a, auto e) {
+        return e->get_id().length() + a;
+    });
+    *buf = (char *)calloc(len, sizeof(char));
+    len = 0;
+    for (auto e = *first; first != last; first++) {
+        auto id = e->get_id();
+        std::memcpy(*buf + len, id.c_str(), id.length());
+        len += id.length() + 1;
+    }
+    return len;
+}
+
 void TiClient::sync(const std::string &curr_token,
                     const std::string &selector) {
     if (curr_token != token || user == nullptr) {
@@ -303,28 +352,8 @@ void TiClient::sync(const std::string &curr_token,
             read_message_body(selector.c_str(), selector.length(), '/');
         if (paths[0] == "*") {
             auto contacts = db.get_contacts(user);
-            std::vector<std::string> group_ids;
-            std::transform(
-                std::find_if(contacts.begin(), contacts.end(),
-                             [&](Entity *ctc) {
-                                 return (dynamic_cast<Group *>(ctc) != nullptr);
-                             }),
-                contacts.end(), std::back_inserter(group_ids),
-                [&](Entity *e) { return e->get_id(); });
-            auto all_messages = db.get_messages();
-            auto messages = std::vector<Message *>(
-                std::find_if(all_messages.begin(), all_messages.end(),
-                             [&](Message *msg) {
-                                 if (msg->get_receiver() == user) {
-                                     return true;
-                                 }
-                                 return std::find(
-                                            group_ids.begin(), group_ids.end(),
-                                            msg->get_receiver()->get_id()) !=
-                                        group_ids.end();
-                             }),
-                all_messages.end());
             std::vector<Frame *> frames;
+            auto messages = db.get_messages(user);
             for (auto msg : messages) {
                 std::copy_if(msg->get_frames().begin(), msg->get_frames().end(),
                              std::back_inserter(frames), [&](Frame *frame) {
@@ -336,6 +365,21 @@ void TiClient::sync(const std::string &curr_token,
             size_t len =
                 write_sync_response(&buf, &contacts, &frames, &messages);
             send(ResponseCode::OK, buf, len);
+            delete buf;
+        } else if (paths[0] == "messages") {
+            if (paths.size() < 2 || paths[1] == "*") {
+                auto messages = db.get_messages(user);
+                char *buf;
+                auto len = write_sync_response(&buf, nullptr, nullptr, &messages);
+                send(ResponseCode::OK, (void *)buf, len);
+                delete buf;
+            } else if (paths[1] == "id") {
+                auto messages = db.get_messages(user);
+                char *buf;
+                auto len = write_entity_id(messages.begin(), messages.end(), &buf);
+                send(ResponseCode::OK, (void *)buf, len);
+                delete buf;
+            }
         } else if (Entity *entity = db.get_entity(paths[0])) {
             if (paths.size() < 2 || paths[1] == "*") {
                 char *buf;
@@ -365,18 +409,10 @@ void TiClient::sync(const std::string &curr_token,
                 }
             } else if (paths[1] == "members") {
                 if (auto *g = dynamic_cast<Group *>(entity)) {
-                    size_t len = std::accumulate(
-                        g->get_members().begin(), g->get_members().end(), 0,
-                        [&](auto l, auto e) {
-                            return l + e->get_id().length() + 1;
-                        });
-                    char *buf = (char *)calloc(len, sizeof(char));
-                    size_t ptr = 0;
-                    for (auto e : g->get_members()) {
-                        auto cid = e->get_id();
-                        std::memcpy(buf + ptr, cid.c_str(), cid.length());
-                        ptr += cid.length() + 1;
-                    }
+                    auto all_members = g->get_members();
+                    char *buf;
+                    auto len = write_entity_id(all_members.begin(),
+                                               all_members.end(), &buf);
                     send(ResponseCode::OK, (void *)buf, len);
                     delete buf;
                 } else {
@@ -384,7 +420,11 @@ void TiClient::sync(const std::string &curr_token,
                 }
             }
         } else if (Message *message = db.get_message(paths[0])) {
-            if (paths.size() < 2 || paths[1] == "*") {
+            auto messages = db.get_messages(user);
+            if (std::find(messages.begin(), messages.end(), message) ==
+                messages.end()) {
+                send(ResponseCode::NOT_FOUND);
+            } else if (paths.size() < 2 || paths[1] == "*") {
                 char *bs;
                 auto len = message->serialize(&bs);
                 send(ResponseCode::OK, (void *)bs, len);

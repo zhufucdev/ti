@@ -14,6 +14,7 @@ class ServerOrm : public orm::TiOrm {
     bool invalidate_token(int token_id, User *owner = nullptr);
     bool invalidate_token(const std::string &token, User *owner = nullptr);
     void add_user(User *user, const std::string &passcode);
+    std::vector<Message *> get_messages(User *owner) const;
 };
 class TiServer : public Server {
     ServerOrm db;
