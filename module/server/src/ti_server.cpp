@@ -3,6 +3,7 @@
 #include <log.h>
 #include <nanoid.h>
 #include <ranges>
+#include <helper.h>
 
 #define PASSWORD_HASH_BYTES 64
 #define PASSWORD_HASH_SALT "DIuL4dPTcL3q1a7EFOF9f"
@@ -61,7 +62,7 @@ bool ServerOrm::check_password(const std::string &user_id,
     if (beg == t->end()) {
         return false;
     }
-    const void *buf;
+    void *buf;
     auto n = (*beg).get_blob(0, &buf);
     if (n != PASSWORD_HASH_BYTES) {
         throw std::runtime_error("corrupt password database");
@@ -168,7 +169,7 @@ void TiClient::on_connect(sockaddr_in addr) {
     logD("[client %s] connected to %s", id.c_str(), inet_ntoa(addr.sin_addr));
 }
 void TiClient::on_message(ti::RequestCode req, char *data, size_t len) {
-    auto body = read_message_body(data, len);
+    auto body = ti::helper::read_message_body(data, len);
     switch (req) {
     case LOGIN:
         logD("[client %s] login(%s, %s)", id.c_str(), body[0].c_str(),
@@ -285,7 +286,7 @@ size_t write_sync_response(char **buf, std::vector<Entity *> *entities,
         sizeof(char));
     sending_len = 0;
     if (entities_mask) {
-        auto len_header = write_len_header(entities->size());
+        auto len_header = ti::helper::write_len_header(entities->size());
         std::memcpy(sending_buf, len_header, BYTES_LEN_HEADER);
         sending_len += BYTES_LEN_HEADER;
         sending_len +=
@@ -293,14 +294,14 @@ size_t write_sync_response(char **buf, std::vector<Entity *> *entities,
         delete len_header;
     }
     if (frames_mask) {
-        auto len_header = write_len_header(frames->size());
+        auto len_header = ti::helper::write_len_header(frames->size());
         std::memcpy(sending_buf + sending_len, len_header, BYTES_LEN_HEADER);
         sending_len += memappend(frame_bufs, frames->size(), frame_lens,
                                  sending_buf + sending_len);
         delete len_header;
     }
     if (messages_mask) {
-        auto len_header = write_len_header(messages->size());
+        auto len_header = ti::helper::write_len_header(messages->size());
         std::memcpy(sending_buf + sending_len, len_header, BYTES_LEN_HEADER);
         memappend(msg_bufs, messages->size(), msg_lens,
                   sending_buf + sending_len);
@@ -345,7 +346,7 @@ void TiClient::sync(const std::string &curr_token,
         send(ResponseCode::TOKEN_EXPIRED);
     } else {
         auto paths =
-            read_message_body(selector.c_str(), selector.length(), '/');
+            ti::helper::read_message_body(selector.c_str(), selector.length(), '/');
         if (paths[0] == "*") {
             auto contacts = db.get_contacts(user);
             std::vector<Frame *> frames;
@@ -362,7 +363,7 @@ void TiClient::sync(const std::string &curr_token,
                 write_sync_response(&buf, &contacts, &frames, &messages);
             send(ResponseCode::OK, buf, len);
             delete buf;
-        } else if (paths[0] == "messages") {
+        } else if (paths[0] == "mbf") {
             if (paths.size() < 2 || paths[1] == "*") {
                 auto messages = db.get_messages(user);
                 char *buf;
@@ -435,7 +436,7 @@ void TiClient::sync(const std::string &curr_token,
 
                 char *bs = (char *)calloc(BYTES_LEN_HEADER + frmstotallen,
                                           sizeof(char));
-                char *bf = write_len_header(frames.size());
+                char *bf = ti::helper::write_len_header(frames.size());
                 std::memcpy(bs, bf, BYTES_LEN_HEADER);
                 delete bf;
                 size_t ptr = BYTES_LEN_HEADER;

@@ -22,6 +22,7 @@ add_subdirectory("${THIRDPARTY_LIB}/NanoId")
 add_subdirectory("${THIRDPARTY_LIB}/Aes256")
 add_subdirectory("${THIRDPARTY_LIB}/Argon2")
 add_subdirectory("${THIRDPARTY_LIB}/SQLite3")
+add_subdirectory("${THIRDPARTY_LIB}/Sha3")
 
 set(MODULES_DIR "${CMAKE_CURRENT_SOURCE_DIR}/module")
 add_subdirectory("${MODULES_DIR}/protocol")

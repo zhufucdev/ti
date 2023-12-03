@@ -1,90 +1,17 @@
 #include "ti.h"
+#include "helper.h"
 #include "log.h"
 #include <algorithm>
-#include <ctime>
 #include <numeric>
-#include <sstream>
-#include <timecompat.h>
 
 using namespace ti;
 using namespace orm;
-
-std::vector<std::string> ti::read_message_body(const char *data, size_t len,
-                                               char separator) {
-    int i = 0, j = 0;
-    std::vector<std::string> heap;
-    while (i < len) {
-        if (data[i] == separator) {
-            std::string substr(data + j, i - j);
-            heap.push_back(substr);
-            j = i + 1;
-        }
-        i++;
-    }
-    if (j != i) {
-        std::string substr(data + j, len - j);
-        heap.push_back(substr);
-    }
-    return heap;
-}
-
-template <class InputIterator>
-InputIterator get_entity_in(InputIterator first, InputIterator last,
-                            const std::string &id) {
-    for (; first != last; first++) {
-        if (*first != nullptr && (*first)->get_id() == id) {
-            return first;
-        }
-    }
-    return last;
-}
+using namespace helper;
 
 void fail_if_bsid_not(BSID expected, BSID actual) {
     if (actual != expected) {
         throw std::runtime_error("unsupported BSID: " + std::to_string(actual));
     }
-}
-
-char *ti::write_len_header(size_t len) {
-    char *tsize = (char *)calloc(BYTES_LEN_HEADER, sizeof(char));
-    int n = BYTES_LEN_HEADER - sizeof(len);
-    while (n < BYTES_LEN_HEADER) {
-        tsize[n] = (len >> (sizeof(len) - n - 1) * 8);
-        n++;
-    }
-    return tsize;
-}
-
-size_t ti::read_len_header(const char *tsize) {
-    int n = 0;
-    size_t msize = 0;
-    while (n < BYTES_LEN_HEADER) {
-        msize <<= sizeof(char);
-        msize |= tsize[n++];
-    }
-    return msize;
-}
-
-std::string ti::to_iso_time(const std::time_t &time) {
-    char buf[sizeof "0000-00-00T00:00:00Z"]; // i hate magic numbers
-    strftime(buf, sizeof buf, "%FT%TZ", gmtime(&time));
-    return buf;
-}
-
-std::time_t ti::parse_iso_time(const std::string &str) {
-    std::tm tm{};
-    compat::time::strptime(str.c_str(), "%FT%TZ", &tm);
-    return compat::time::timegm(&tm);
-}
-
-std::string write_entities(std::vector<Entity *> entities) {
-    std::stringstream ss;
-    std::transform(entities.begin(), entities.end(),
-                   std::ostream_iterator<std::string>(ss, ","),
-                   [&](Entity *e) { return e->get_id(); });
-    auto str = ss.str();
-    str = str.substr(0, str.length() - 1);
-    return str;
 }
 
 bool Entity::operator==(const Entity &other) const {
@@ -109,7 +36,7 @@ std::string User::get_name() const { return name; }
 std::string User::get_bio() const { return bio; }
 time_t User::get_registration_time() const { return registration_time; }
 size_t User::serialize(char **dst) const {
-    auto reg_time = ti::to_iso_time(registration_time);
+    auto reg_time = to_iso_time(registration_time);
     auto len =
         id.length() + name.length() + bio.length() + reg_time.length() + 5;
     *dst = (char *)calloc(len, sizeof(char));
@@ -223,7 +150,7 @@ bool Message::is_visible_by(const ti::Entity *entity) {
     return false;
 }
 size_t Message::serialize(char **dst) const {
-    auto time_str = ti::to_iso_time(time);
+    auto time_str = to_iso_time(time);
     auto forwardid = forwarded_from == nullptr ? "" : forwarded_from->get_id();
 
     size_t len = id.length() + BYTES_LEN_HEADER + sender->get_id().length() +
@@ -388,8 +315,8 @@ Row::Row(sqlite3_stmt *handle) : handle(handle) {}
 std::string Row::get_name(int col) const {
     return sqlite3_column_name(handle, col);
 }
-int Row::get_blob(int col, const void **rec) const {
-    *rec = sqlite3_column_blob(handle, col);
+int Row::get_blob(int col, void **rec) const {
+    *rec = (void *)sqlite3_column_blob(handle, col);
     return sqlite3_column_bytes(handle, col);
 }
 double Row::get_double(int col) const {
@@ -436,6 +363,14 @@ SqlTransaction *SqlDatabase::prepare(const std::string &expr) const {
 }
 void SqlDatabase::initialize() { sqlite3_initialize(); }
 void SqlDatabase::shutdown() { sqlite3_shutdown(); }
+
+Sync::Sync(ti::orm::SqlTransaction *t) : t(t), ch{}, mh{} {
+    for (auto row : *t) {
+        mh.len = row.get_blob(0, (void **)&mh.hash);
+        ch.len = row.get_blob(1, (void **)&ch.hash);
+    }
+}
+Sync::~Sync() { delete t; }
 
 TiOrm::TiOrm(const ti::orm::TiOrm &t) : SqlDatabase(t) {
     entities = t.entities;
@@ -484,6 +419,12 @@ CREATE TABLE IF NOT EXISTS "contact"
     id         integer primary key,
     owner_id   varchar(21) not null,
     contact_id varchar(21) not null
+);
+CREATE TABLE IF NOT EXISTS "sync"
+(
+    user_id varchar(21) primary key,
+    messages blob,
+    contacts blob
 );
 )");
 }
@@ -544,8 +485,9 @@ void TiOrm::pull() {
     contacts.clear();
     t = prepare(R"(SELECT owner_id, contact_id FROM "contact")");
     for (auto e : *t) {
-        contacts.emplace_back(get_user(e.get_text(0)),
-                              *get_entity_in(entities.begin(), entities.end(), e.get_text(1)));
+        contacts.emplace_back(
+            get_user(e.get_text(0)),
+            *get_entity_in(entities.begin(), entities.end(), e.get_text(1)));
     }
     delete t;
 }
@@ -568,7 +510,7 @@ User *TiOrm::get_user(const std::string &id) const {
     }
     return nullptr;
 }
-std::vector<Entity *> TiOrm::get_contacts(const User *owner) const {
+std::vector<Entity *> TiOrm::get_contacts(User *owner) const {
     std::vector<Entity *> ev;
     for (auto e : contacts) {
         if (*e.first == *owner) {
@@ -579,9 +521,31 @@ std::vector<Entity *> TiOrm::get_contacts(const User *owner) const {
 }
 void TiOrm::add_contact(User *owner, Entity *contact) {
     contacts.emplace_back(owner, contact);
-    auto t = prepare(R"(INSERT INTO "contact"(owner_id, contact_id) VALUES (?, ?))");
+    auto t =
+        prepare(R"(INSERT INTO "contact"(owner_id, contact_id) VALUES (?, ?))");
     t->bind_text(0, owner->get_id());
     t->bind_text(1, contact->get_id());
+    t->begin();
+    delete t;
+
+    t = prepare(R"(SELECT contacts FROM "sync" WHERE user_id = ?)");
+    t->bind_text(0, owner->get_id());
+    char *buf;
+    size_t len = 0;
+    for (auto row : *t) {
+        len = row.get_blob(0, (void **)&buf);
+        break;
+    }
+    len = next_sync_hash(buf, len, "+" + contact->get_id(), &buf);
+    delete t;
+
+    t = prepare(R"(INSERT OR IGNORE INTO "sync"(user_id) VALUES (?))");
+    t->bind_text(0, owner->get_id());
+    t->begin();
+    delete t;
+    t = prepare(R"(UPDATE "sync" SET contacts = ? WHERE user_id = ?)");
+    t->bind_blob(0, buf, len);
+    t->bind_text(1, owner->get_id());
     t->begin();
     delete t;
 }
@@ -623,7 +587,7 @@ void TiOrm::delete_entity(ti::Entity *entity) {
     } else if (auto *g = dynamic_cast<Group *>(entity)) {
         t = prepare(R"(DELETE FROM "group" WHERE id = ?)");
     } else {
-        throw std::runtime_error("unsupported enetity type");
+        throw std::runtime_error("unsupported entity type");
     }
     t->bind_text(0, entity->get_id());
     t->begin();
@@ -670,4 +634,42 @@ void TiOrm::add_message(ti::Message *msg) {
     t->bind_text(4, msg->get_receiver()->get_id());
     t->begin();
     delete t;
+
+    auto receiver = msg->get_receiver();
+    std::vector<User *> targets;
+    if (auto *u = dynamic_cast<User *>(receiver)) {
+        targets.push_back(u);
+    } else if (auto *g = dynamic_cast<Group *>(receiver)) {
+        for (auto e : g->get_members()) {
+            if (auto *usr = dynamic_cast<User *>(e)) {
+                targets.push_back(usr);
+            }
+        }
+    }
+    for (auto target : targets) {
+        t = prepare(R"(SELECT messages from "sync" WHERE user_id = ?)");
+        t->bind_text(0, target->get_id());
+        char *buf;
+        size_t len = 0;
+        for (auto row : *t) {
+            len = row.get_blob(0, (void **)&buf);
+        }
+        len = next_sync_hash(buf, len, "+" + msg->get_id(), &buf);
+        delete t;
+        t = prepare(R"(INSERT OR IGNORE INTO sync(user_id) VALUES (?))");
+        t->bind_text(0, target->get_id());
+        t->begin();
+        delete t;
+        t = prepare(R"(UPDATE sync SET messages = ? WHERE user_id = ?)");
+        t->bind_blob(0, buf, len);
+        t->bind_text(1, target->get_id());
+        t->begin();
+        delete t;
+    }
+}
+Sync *TiOrm::get_sync(ti::User *owner) const {
+    auto t =
+        prepare(R"(SELECT messages, contacts FROM "sync" WHERE user_id = ?)");
+    t->bind_text(0, owner->get_id());
+    return new Sync(t);
 }

@@ -1,5 +1,6 @@
 #include "server.h"
 #include <thread>
+#include <helper.h>
 
 using namespace ti::server;
 
@@ -97,7 +98,7 @@ void Server::handleconn(sockaddr_in addr, SocketFd clientfd) {
             if (n <= 0) {
                 break;
             }
-            msize = read_len_header(tsize);
+            msize = ti::helper::read_len_header(tsize);
             buff = (char *)malloc(msize);
             n = recv(clientfd, buff, msize, 0);
             if (n <= 0) {
@@ -118,7 +119,7 @@ void Server::send(SocketFd clientfd, ResponseCode res, void *data, size_t len) {
     auto *tres = (char *)calloc(1, sizeof(char));
     tres[0] = res;
     compat::socket::send(clientfd, tres, sizeof(char), 0);
-    char *tsize = write_len_header(len);
+    char *tsize = ti::helper::write_len_header(len);
     compat::socket::send(clientfd, tsize, sizeof(char) * BYTES_LEN_HEADER, 0);
     if (len > 0) {
         compat::socket::send(clientfd, data, len, 0);

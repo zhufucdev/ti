@@ -1,6 +1,7 @@
 #include "client.h"
 #include <log.h>
 #include <thread>
+#include <helper.h>
 
 using namespace ti::client;
 
@@ -52,7 +53,7 @@ void Client::start() {
             if (n <= 0) {
                 break;
             }
-            size_t msize = read_len_header(tsize);
+            size_t msize = ti::helper::read_len_header(tsize);
             char *buff;
             if (msize > 0) {
                 buff = (char *)calloc(msize, sizeof(char));
@@ -95,7 +96,7 @@ Response Client::send(const RequestCode req_c, const void *data, size_t len) {
     }
     auto *treq = (char *)calloc(1, sizeof(char));
     treq[0] = req_c;
-    char *tsize = write_len_header(len);
+    char *tsize = ti::helper::write_len_header(len);
     compat::socket::send(socketfd, treq, sizeof(char), 0);
     compat::socket::send(socketfd, tsize, BYTES_LEN_HEADER * sizeof(char), 0);
     compat::socket::send(socketfd, data, len, 0);

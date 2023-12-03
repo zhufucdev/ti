@@ -5,17 +5,9 @@
 #include <string>
 #include <vector>
 
-#define BYTES_LEN_HEADER 8
 
 namespace ti {
 const std::string version = "0.1";
-
-char *write_len_header(size_t len);
-size_t read_len_header(const char *tsize);
-std::string to_iso_time(const std::time_t &time);
-std::time_t parse_iso_time(const std::string &str);
-std::vector<std::string> read_message_body(const char *data, size_t len,
-                                           char separator = '\0');
 
 class BinarySerializable {
   public:
@@ -129,7 +121,7 @@ class Row {
     std::string get_text(int col) const;
     int get_int(int col) const;
     long get_int64(int col) const;
-    int get_blob(int col, const void **rec) const;
+    int get_blob(int col, void **rec) const;
     double get_double(int col) const;
     std::string get_name(int col) const;
     int get_type(int col) const;
@@ -188,6 +180,21 @@ class SqlDatabase {
     static void shutdown();
 };
 
+struct Hash {
+    size_t len;
+    char *hash;
+};
+
+class Sync {
+    SqlTransaction *t;
+    Hash ch, mh;
+  public:
+    Sync(SqlTransaction *t);
+    ~Sync();
+    const Hash get_contacts_hash() const;
+    const Hash get_messages_hash() const;
+};
+
 class TiOrm : public SqlDatabase {
     std::vector<Entity *> entities;
     std::vector<Frame *> frames;
@@ -201,7 +208,7 @@ class TiOrm : public SqlDatabase {
     virtual void pull();
     std::vector<User *> get_users() const;
     User *get_user(const std::string &id) const;
-    std::vector<Entity *> get_contacts(const User *owner) const;
+    std::vector<Entity *> get_contacts(User *owner) const;
     void add_contact(User *owner, Entity *contact);
     void add_entity(Entity *entity);
     void delete_entity(Entity *entity);
@@ -211,6 +218,7 @@ class TiOrm : public SqlDatabase {
     std::vector<Message *> get_messages() const;
     Message *get_message(const std::string &id);
     void add_message(Message *msg);
+    Sync *get_sync(ti::User *owner) const;
 };
 } // namespace orm
 } // namespace ti
