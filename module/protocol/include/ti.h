@@ -130,6 +130,7 @@ class Row {
 class SqlTransaction {
     sqlite3_stmt *handle;
     bool closed;
+    std::vector<char *> pending_str;
     static void throw_on_fail(int code);
 
   public:

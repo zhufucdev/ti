@@ -231,7 +231,7 @@ Message *Message::deserialize(char *src, size_t len,
 }
 
 SqlTransaction::SqlTransaction(const std::string &expr, sqlite3 *db)
-    : closed(false) {
+    : closed(false), pending_str() {
     int n =
         sqlite3_prepare_v2(db, expr.c_str(), expr.length(), &handle, nullptr);
     if (n != SQLITE_OK) {
@@ -246,8 +246,11 @@ void SqlTransaction::throw_on_fail(int code) {
     }
 }
 void SqlTransaction::bind_text(int pos, const std::string &text) {
-    throw_on_fail(sqlite3_bind_text(handle, pos + 1, text.c_str(),
-                                    text.length(), nullptr));
+    // make the text live longer (until the transaction ends)
+    char *cpy = (char *)calloc(text.length() + 1, sizeof(char));
+    std::strcpy(cpy, text.c_str());
+    pending_str.push_back(cpy);
+    throw_on_fail(sqlite3_bind_text(handle, pos + 1, cpy, -1, nullptr));
 }
 void SqlTransaction::bind_int(int pos, const int n) {
     throw_on_fail(sqlite3_bind_int(handle, pos + 1, n));
@@ -274,6 +277,9 @@ void SqlTransaction::close() {
     if (!closed) {
         sqlite3_finalize(handle);
         closed = true;
+        for (auto ptr : pending_str) {
+            delete ptr;
+        }
     }
 }
 
@@ -330,7 +336,7 @@ std::string Row::get_text(int col) const {
     if (s == nullptr) {
         throw std::overflow_error("column index overflow");
     }
-    return reinterpret_cast<const char *>(s);
+    return {(const char *)s};
 }
 
 SqlDatabase::SqlDatabase(const std::string &dbfile) : is_cpy(false) {
@@ -382,14 +388,14 @@ TiOrm::TiOrm(const std::string &dbfile) : SqlDatabase(dbfile) {
     exec_sql(R"(CREATE TABLE IF NOT EXISTS "user"
 (
     id                varchar(21) primary key not null,
-    name              varchar                 not null,
-    bio               varchar                 not null,
+    name              text                    not null,
+    bio               text                    not null,
     registration_date datetime                not null
 );
 CREATE TABLE IF NOT EXISTS "group"
 (
     id   varchar(21) primary key not null,
-    name varchar                 not null,
+    name text                    not null,
     foreign key (id)
         references box (container_id)
         on delete cascade
@@ -397,7 +403,7 @@ CREATE TABLE IF NOT EXISTS "group"
 CREATE TABLE IF NOT EXISTS "text_frame"
 (
     id      varchar(21) primary key not null,
-    content varchar                 not null
+    content text                    not null
 );
 CREATE TABLE IF NOT EXISTS "message"
 (
@@ -422,7 +428,7 @@ CREATE TABLE IF NOT EXISTS "contact"
 );
 CREATE TABLE IF NOT EXISTS "sync"
 (
-    user_id varchar(21) primary key,
+    user_id  varchar(21) primary key,
     messages blob,
     contacts blob
 );

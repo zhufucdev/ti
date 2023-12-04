@@ -69,7 +69,8 @@ TEST_F(ServerOrmTest, AddMessage) {
     sorm->add_entity(&testificate_woman);
     std::vector<ti::Frame *> frames = {
         new ti::TextFrame(nanoid::generate(), "Hi I'm John Cena"),
-        new ti::TextFrame(nanoid::generate(), "I like bing chilling")};
+        new ti::TextFrame(nanoid::generate(), "I like bing chilling"),
+        new ti::TextFrame(nanoid::generate(), nanoid::generate(1 << 12))};
     auto msg = new ti::Message(nanoid::generate(), frames, now,
                                &testificate_man, &testificate_woman, nullptr);
     sorm->add_message(msg);
@@ -79,6 +80,8 @@ TEST_F(ServerOrmTest, AddMessage) {
     ASSERT_EQ(m->get_time(), now);
     ASSERT_EQ(m->get_frames().size(), frames.size());
     ASSERT_EQ(m->get_frames()[0]->get_id(), frames[0]->get_id());
+    ASSERT_EQ(m->get_frames()[0]->to_string(), frames[0]->to_string());
+    ASSERT_EQ(m->get_frames()[2]->to_string(), frames[2]->to_string());
 }
 
 TEST_F(ServerOrmTest, AddContact) {
