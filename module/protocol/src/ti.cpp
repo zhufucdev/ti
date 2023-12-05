@@ -17,15 +17,19 @@ void fail_if_bsid_not(BSID expected, BSID actual) {
 bool Entity::operator==(const Entity &other) const {
     return other.get_id() == get_id();
 }
-Entity *Entity::deserialize(char *src, size_t len, const std::vector<Entity *> &entities) {
+Entity *Entity::deserialize(
+    char *src, size_t len,
+    const std::function<Entity *(const std::string &)> &getter) {
     auto bsid = (BSID)src[0];
     switch (bsid) {
     case BSID::ENTY_USR:
         return User::deserialize(src, len);
     case BSID::ENTY_GRP:
-        return Group::deserialize(src, len, entities);
+        return Group::deserialize(src, len, getter);
     case BSID::ENTY_SRV:
         return &Server::INSTANCE;
+    default:
+        throw std::runtime_error("not implemented");
     }
 }
 
@@ -97,8 +101,9 @@ size_t Group::serialize(char **dst) const {
     }
     return len;
 }
-Group *Group::deserialize(char *src, size_t len,
-                          const std::vector<Entity *> &entities) {
+Group *
+Group::deserialize(char *src, size_t len,
+                   const std::function<Entity *(const std::string &)> &getter) {
     if (len <= 0) {
         return nullptr;
     }
@@ -108,10 +113,8 @@ Group *Group::deserialize(char *src, size_t len,
         throw std::runtime_error("unexpected size (deserializing Group)");
     }
     std::vector<Entity *> members;
-    std::transform(
-        args.begin() + 2, args.end(), std::back_inserter(members), [&](auto t) {
-            return *get_entity_in(entities.begin(), entities.end(), t);
-        });
+    std::transform(args.begin() + 2, args.end(), std::back_inserter(members),
+                   getter);
     return new Group(args[0], args[1], members);
 }
 
@@ -531,8 +534,8 @@ void TiOrm::pull() {
     t = prepare(R"(SELECT * FROM "message")");
     for (auto row : *t) {
         std::vector<Frame *> content;
-        auto tr =
-            prepare(R"(SELECT contained_id FROM "box" WHERE container_id = ? ORDER BY id)");
+        auto tr = prepare(
+            R"(SELECT contained_id FROM "box" WHERE container_id = ? ORDER BY id)");
         tr->bind_text(0, row.get_text(0));
         std::transform(tr->begin(), tr->end(), std::back_inserter(content),
                        [&](Row r) {
@@ -571,9 +574,7 @@ void TiOrm::reset() {
     frames.clear();
     messages.clear();
 }
-TiOrm::~TiOrm() {
-    reset();
-}
+TiOrm::~TiOrm() { reset(); }
 std::vector<User *> TiOrm::get_users() const {
     std::vector<User *> users;
     for (auto e : entities) {

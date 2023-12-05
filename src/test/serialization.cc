@@ -1,4 +1,5 @@
 #include <gtest/gtest.h>
+#include <helper.h>
 #include <nanoid.h>
 #include <ti.h>
 
@@ -67,7 +68,9 @@ TEST_F(SerializationTest, Group) {
     char *bs;
     auto len = group->serialize(&bs);
 
-    auto sg = Group::deserialize(bs, len, entities);
+    auto sg = Group::deserialize(bs, len, [&](auto id) {
+        return *ti::helper::get_entity_in(entities.begin(), entities.end(), id);
+    });
     ASSERT_EQ(sg->get_id(), group->get_id());
     ASSERT_EQ(sg->get_name(), group->get_name());
     ASSERT_EQ(sg->get_members(), vector<Entity *>{user});

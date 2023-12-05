@@ -5,7 +5,6 @@
 #include <string>
 #include <vector>
 
-
 namespace ti {
 const std::string version = "0.1";
 
@@ -18,15 +17,20 @@ enum BSID { ENTY_SRV = 0x00, ENTY_USR, ENTY_GRP, FRM_TXT = 0x40 };
 
 class Entity : public BinarySerializable {
   public:
+    virtual ~Entity() = default;
     virtual std::string get_id() const = 0;
     bool operator==(const Entity &other) const;
+    static Entity *deserialize(char *src, size_t len,
+                               const std::function<Entity *(const std::string &)> &getter);
 };
 
-class Server : public Entity {
+class Server final : public Entity {
   public:
     std::string get_id() const override;
+    ~Server() final;
     Server();
     size_t serialize(char **dst) const override;
+    static Server INSTANCE;
 };
 
 class User : public Entity {
@@ -58,11 +62,12 @@ class Group : public Entity {
     std::vector<Entity *> &get_members();
     size_t serialize(char **dst) const override;
     static Group *deserialize(char *src, size_t len,
-                              const std::vector<Entity *> &entities);
+                              const std::function<Entity *(const std::string &)> &getter);
 };
 
 class Frame : public BinarySerializable {
   public:
+    virtual ~Frame() = default;
     virtual std::string to_string() const = 0;
     virtual std::string get_id() const = 0;
 };
@@ -86,8 +91,9 @@ class Message : public BinarySerializable {
     std::time_t time;
 
   public:
-    Message(const std::string &id, const std::vector<Frame *> &content, std::time_t time,
-            Entity *sender, Entity *receiver, Entity *forwared_from);
+    Message(const std::string &id, const std::vector<Frame *> &content,
+            std::time_t time, Entity *sender, Entity *receiver,
+            Entity *forwared_from);
     const std::vector<Frame *> &get_frames() const;
     std::string get_id() const;
     Entity *get_sender() const;
@@ -181,19 +187,23 @@ class SqlDatabase {
     static void shutdown();
 };
 
-struct Hash {
+struct ByteArray {
     size_t len;
     char *hash;
 };
 
 class Sync {
-    SqlTransaction *t;
-    Hash ch, mh;
+    SqlDatabase *db;
+    User *owner;
+    ByteArray *ch, *mh;
+    std::vector<SqlTransaction *> pending;
+    bool *destroyed;
+
   public:
-    Sync(SqlTransaction *t);
+    Sync(SqlDatabase *db, User *owner);
     ~Sync();
-    const Hash get_contacts_hash() const;
-    const Hash get_messages_hash() const;
+    const ByteArray *get_contacts_hash();
+    const ByteArray *get_messages_hash();
 };
 
 class TiOrm : public SqlDatabase {
@@ -201,6 +211,8 @@ class TiOrm : public SqlDatabase {
     std::vector<Frame *> frames;
     std::vector<Message *> messages;
     std::vector<std::pair<User *, Entity *>> contacts;
+
+    void reset();
 
   public:
     explicit TiOrm(const std::string &dbfile);
@@ -211,6 +223,11 @@ class TiOrm : public SqlDatabase {
     User *get_user(const std::string &id) const;
     std::vector<Entity *> get_contacts(User *owner) const;
     void add_contact(User *owner, Entity *contact);
+    /**
+     * Insert a new entity, or replace the existing one,
+     * making whose pointer invalid
+     * @param entity
+     */
     void add_entity(Entity *entity);
     void delete_entity(Entity *entity);
     std::vector<Entity *> get_entities() const;
@@ -219,7 +236,7 @@ class TiOrm : public SqlDatabase {
     std::vector<Message *> get_messages() const;
     Message *get_message(const std::string &id);
     void add_message(Message *msg);
-    Sync *get_sync(ti::User *owner) const;
+    Sync get_sync(ti::User *owner) const;
 };
 } // namespace orm
 } // namespace ti
