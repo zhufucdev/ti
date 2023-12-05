@@ -17,7 +17,19 @@ void fail_if_bsid_not(BSID expected, BSID actual) {
 bool Entity::operator==(const Entity &other) const {
     return other.get_id() == get_id();
 }
+Entity *Entity::deserialize(char *src, size_t len, const std::vector<Entity *> &entities) {
+    auto bsid = (BSID)src[0];
+    switch (bsid) {
+    case BSID::ENTY_USR:
+        return User::deserialize(src, len);
+    case BSID::ENTY_GRP:
+        return Group::deserialize(src, len, entities);
+    case BSID::ENTY_SRV:
+        return &Server::INSTANCE;
+    }
+}
 
+Server::~Server() = default;
 Server::Server() = default;
 std::string Server::get_id() const { return "zGuEzyj3EUyeSKAvHw3Zo"; }
 size_t Server::serialize(char **dst) const {
@@ -27,6 +39,7 @@ size_t Server::serialize(char **dst) const {
     std::memcpy(*dst + 1, id.c_str(), id.length());
     return id.length() + 1;
 }
+Server Server::INSTANCE = Server();
 
 User::User(const std::string &id, const std::string &name,
            const std::string &bio, const time_t registration_time)
@@ -370,13 +383,61 @@ SqlTransaction *SqlDatabase::prepare(const std::string &expr) const {
 void SqlDatabase::initialize() { sqlite3_initialize(); }
 void SqlDatabase::shutdown() { sqlite3_shutdown(); }
 
-Sync::Sync(ti::orm::SqlTransaction *t) : t(t), ch{}, mh{} {
-    for (auto row : *t) {
-        mh.len = row.get_blob(0, (void **)&mh.hash);
-        ch.len = row.get_blob(1, (void **)&ch.hash);
+Sync::Sync(ti::orm::SqlDatabase *db, ti::User *owner)
+    : db(db), owner(owner), ch(nullptr), mh(nullptr), pending(),
+      destroyed(new bool{false}) {}
+Sync::~Sync() {
+    *destroyed = true;
+    mh->len = 0;
+    ch->len = 0;
+    delete mh;
+    delete ch;
+    for (auto t : pending) {
+        delete t;
     }
 }
-Sync::~Sync() { delete t; }
+const ByteArray *Sync::get_messages_hash() {
+    if (*destroyed) {
+        throw std::domain_error(
+            "This sync has been destroyed. It is probably copied from "
+            "something else, which has been deconstructed.");
+    }
+    if (mh != nullptr) {
+        return mh;
+    }
+    auto t = db->prepare(R"(SELECT messages from "sync" WHERE user_id = ?)");
+    pending.push_back(t);
+    t->bind_text(0, owner->get_id());
+    char *buf;
+    size_t len = 0;
+    for (auto row : *t) {
+        len = row.get_blob(0, (void **)&buf);
+    }
+    mh = new ByteArray{len, buf};
+    return mh;
+}
+const ByteArray *Sync::get_contacts_hash() {
+    if (*destroyed) {
+        throw std::domain_error(
+            "This sync has been destroyed. It is probably copied from "
+            "something else, which has been deconstructed.");
+    }
+    if (mh != nullptr) {
+        return mh;
+    }
+    auto t = db->prepare(R"(SELECT messages from "sync" WHERE user_id = ?)");
+    pending.push_back(t);
+    t->bind_text(0, owner->get_id());
+    char *buf;
+    size_t len = 0;
+    for (auto row : *t) {
+        len = row.get_blob(0, (void **)&buf);
+    }
+    mh = (ByteArray *)malloc(sizeof(ByteArray));
+    mh->hash = buf;
+    mh->len = len;
+    return mh;
+}
 
 TiOrm::TiOrm(const ti::orm::TiOrm &t) : SqlDatabase(t) {
     entities = t.entities;
@@ -435,8 +496,8 @@ CREATE TABLE IF NOT EXISTS "sync"
 )");
 }
 void TiOrm::pull() {
-    entities.clear();
-    entities.push_back(new Server());
+    reset();
+
     auto t = prepare(R"(SELECT * FROM "user")");
     for (auto row : *t) {
         entities.push_back(new User(row.get_text(0), row.get_text(1),
@@ -461,25 +522,24 @@ void TiOrm::pull() {
     }
     delete t;
 
-    frames.clear();
     t = prepare(R"(SELECT * FROM "text_frame")");
     for (auto row : *t) {
         frames.push_back(new TextFrame(row.get_text(0), row.get_text(1)));
     }
     delete t;
 
-    messages.clear();
     t = prepare(R"(SELECT * FROM "message")");
     for (auto row : *t) {
         std::vector<Frame *> content;
         auto tr =
-            prepare(R"(SELECT contained_id FROM "box" WHERE container_id = ?)");
+            prepare(R"(SELECT contained_id FROM "box" WHERE container_id = ? ORDER BY id)");
         tr->bind_text(0, row.get_text(0));
         std::transform(tr->begin(), tr->end(), std::back_inserter(content),
                        [&](Row r) {
                            return *get_entity_in(frames.begin(), frames.end(),
                                                  r.get_text(0));
                        });
+        delete tr;
         messages.push_back(new Message(
             row.get_text(0), content, parse_iso_time(row.get_text(1)),
             *get_entity_in(entities.begin(), entities.end(), row.get_text(2)),
@@ -488,7 +548,6 @@ void TiOrm::pull() {
     }
     delete t;
 
-    contacts.clear();
     t = prepare(R"(SELECT owner_id, contact_id FROM "contact")");
     for (auto e : *t) {
         contacts.emplace_back(
@@ -497,7 +556,24 @@ void TiOrm::pull() {
     }
     delete t;
 }
-TiOrm::~TiOrm() = default;
+void TiOrm::reset() {
+    for (auto e : entities) {
+        delete e;
+    }
+    for (auto f : frames) {
+        delete f;
+    }
+    for (auto m : messages) {
+        delete m;
+    }
+    contacts.clear();
+    entities.clear();
+    frames.clear();
+    messages.clear();
+}
+TiOrm::~TiOrm() {
+    reset();
+}
 std::vector<User *> TiOrm::get_users() const {
     std::vector<User *> users;
     for (auto e : entities) {
@@ -508,11 +584,9 @@ std::vector<User *> TiOrm::get_users() const {
     return users;
 }
 User *TiOrm::get_user(const std::string &id) const {
-    User *u;
-    for (auto e : entities) {
-        if (e->get_id() == id && (u = dynamic_cast<User *>(e))) {
-            return u;
-        }
+    auto e = get_entity(id);
+    if (auto u = dynamic_cast<User *>(e)) {
+        return u;
     }
     return nullptr;
 }
@@ -556,7 +630,18 @@ void TiOrm::add_contact(User *owner, Entity *contact) {
     delete t;
 }
 void TiOrm::add_entity(Entity *entity) {
-    entities.push_back(entity);
+    auto replace = false;
+    for (auto &e : entities) {
+        if (e->get_id() == entity->get_id()) {
+            delete e;
+            e = entity;
+            replace = true;
+            break;
+        }
+    }
+    if (!replace) {
+        entities.push_back(entity);
+    }
     if (auto *u = dynamic_cast<User *>(entity)) {
         auto t = prepare(R"(INSERT INTO "user" VALUES (?, ?, ?, ?))");
         t->bind_text(0, u->get_id());
@@ -673,9 +758,6 @@ void TiOrm::add_message(ti::Message *msg) {
         delete t;
     }
 }
-Sync *TiOrm::get_sync(ti::User *owner) const {
-    auto t =
-        prepare(R"(SELECT messages, contacts FROM "sync" WHERE user_id = ?)");
-    t->bind_text(0, owner->get_id());
-    return new Sync(t);
+Sync TiOrm::get_sync(ti::User *owner) const {
+    return {(SqlDatabase *)this, owner};
 }
