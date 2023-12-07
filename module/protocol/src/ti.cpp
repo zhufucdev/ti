@@ -165,6 +165,19 @@ bool Message::is_visible_by(const ti::Entity *entity) {
     }
     return false;
 }
+std::vector<User *> Message::get_all_receivers() {
+    std::vector<User *> targets;
+    if (auto *u = dynamic_cast<User *>(receiver)) {
+        targets.push_back(u);
+    } else if (auto *g = dynamic_cast<Group *>(receiver)) {
+        for (auto e : g->get_members()) {
+            if (auto *usr = dynamic_cast<User *>(e)) {
+                targets.push_back(usr);
+            }
+        }
+    }
+    return targets;
+}
 size_t Message::serialize(char **dst) const {
     auto time_str = to_iso_time(time);
     auto forwardid = forwarded_from == nullptr ? "" : forwarded_from->get_id();
@@ -600,6 +613,28 @@ std::vector<Entity *> TiOrm::get_contacts(User *owner) const {
     }
     return ev;
 }
+void TiOrm::update_sync(const User *owner, const std::string &addition,
+                        std::string field) {
+    auto t = prepare("SELECT " + field + " FROM \"sync\" WHERE user_id = ?");
+    t->bind_text(0, owner->get_id());
+    char *buf;
+    size_t len = 0;
+    for (auto row : *t) {
+        len = row.get_blob(0, (void **)&buf);
+        break;
+    }
+    len = next_sync_hash(buf, len, addition, &buf);
+    delete t;
+    t = prepare(R"(INSERT OR IGNORE INTO "sync"(user_id) VALUES (?))");
+    t->bind_text(0, owner->get_id());
+    t->begin();
+    delete t;
+    t = prepare("UPDATE \"sync\" SET " + field + " = ? WHERE user_id = ?");
+    t->bind_blob(0, buf, len);
+    t->bind_text(1, owner->get_id());
+    t->begin();
+    delete t;
+}
 void TiOrm::add_contact(User *owner, Entity *contact) {
     contacts.emplace_back(owner, contact);
     auto t =
@@ -608,27 +643,23 @@ void TiOrm::add_contact(User *owner, Entity *contact) {
     t->bind_text(1, contact->get_id());
     t->begin();
     delete t;
-
-    t = prepare(R"(SELECT contacts FROM "sync" WHERE user_id = ?)");
-    t->bind_text(0, owner->get_id());
-    char *buf;
-    size_t len = 0;
-    for (auto row : *t) {
-        len = row.get_blob(0, (void **)&buf);
-        break;
+    update_sync(owner, "+" + contact->get_id(), "contacts");
+}
+bool TiOrm::delete_contact(ti::User *owner, ti::Entity *contact) {
+    auto find = std::find_if(contacts.begin(), contacts.end(),
+                             [&](auto p) { return p.first == contact; });
+    if (find == contacts.end()) {
+        return false;
     }
-    len = next_sync_hash(buf, len, "+" + contact->get_id(), &buf);
-    delete t;
-
-    t = prepare(R"(INSERT OR IGNORE INTO "sync"(user_id) VALUES (?))");
+    contacts.erase(find);
+    auto t = prepare(
+        R"(DELETE FROM "contact" WHERE owner_id = ? AND contact_id = ?)");
     t->bind_text(0, owner->get_id());
+    t->bind_text(1, contact->get_id());
     t->begin();
     delete t;
-    t = prepare(R"(UPDATE "sync" SET contacts = ? WHERE user_id = ?)");
-    t->bind_blob(0, buf, len);
-    t->bind_text(1, owner->get_id());
-    t->begin();
-    delete t;
+    update_sync(owner, "-" + contact->get_id(), "contacts");
+    return true;
 }
 void TiOrm::add_entity(Entity *entity) {
     auto replace = false;
@@ -726,38 +757,26 @@ void TiOrm::add_message(ti::Message *msg) {
     t->bind_text(4, msg->get_receiver()->get_id());
     t->begin();
     delete t;
-
-    auto receiver = msg->get_receiver();
-    std::vector<User *> targets;
-    if (auto *u = dynamic_cast<User *>(receiver)) {
-        targets.push_back(u);
-    } else if (auto *g = dynamic_cast<Group *>(receiver)) {
-        for (auto e : g->get_members()) {
-            if (auto *usr = dynamic_cast<User *>(e)) {
-                targets.push_back(usr);
-            }
-        }
-    }
+    auto targets = msg->get_all_receivers();
     for (auto target : targets) {
-        t = prepare(R"(SELECT messages from "sync" WHERE user_id = ?)");
-        t->bind_text(0, target->get_id());
-        char *buf;
-        size_t len = 0;
-        for (auto row : *t) {
-            len = row.get_blob(0, (void **)&buf);
-        }
-        len = next_sync_hash(buf, len, "+" + msg->get_id(), &buf);
-        delete t;
-        t = prepare(R"(INSERT OR IGNORE INTO sync(user_id) VALUES (?))");
-        t->bind_text(0, target->get_id());
-        t->begin();
-        delete t;
-        t = prepare(R"(UPDATE sync SET messages = ? WHERE user_id = ?)");
-        t->bind_blob(0, buf, len);
-        t->bind_text(1, target->get_id());
-        t->begin();
-        delete t;
+        update_sync(target, "+" + msg->get_id(), "messages");
     }
+}
+bool TiOrm::delete_message(ti::Message *msg) {
+    auto find = std::find(messages.begin(), messages.end(), msg);
+    if (find == messages.end()) {
+        return false;
+    }
+    messages.erase(find);
+    auto t = prepare(R"(DELETE FROM message WHERE id = ?)");
+    t->bind_text(0, msg->get_id());
+    t->begin();
+    delete t;
+    auto targets = msg->get_all_receivers();
+    for (auto target : targets) {
+        update_sync(target, "-" + msg->get_id(), "messages");
+    }
+    return true;
 }
 Sync TiOrm::get_sync(ti::User *owner) const {
     return {(SqlDatabase *)this, owner};

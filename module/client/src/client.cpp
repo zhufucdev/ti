@@ -1,7 +1,7 @@
 #include "client.h"
+#include <helper.h>
 #include <log.h>
 #include <thread>
-#include <helper.h>
 
 using namespace ti::client;
 
@@ -14,7 +14,7 @@ void Client::start() {
         throw std::runtime_error("client already running");
     }
 
-    #if _WIN32
+#if _WIN32
     WSADATA wsaData;
     if (WSAStartup(MAKEWORD(2, 2), &wsaData) != 0) {
         throw std::runtime_error("failed to initialize winsock");
@@ -24,9 +24,9 @@ void Client::start() {
         WSACleanup();
         throw std::runtime_error("failed to create socket");
     }
-    #else
+#else
     socketfd = socket(PF_INET, SOCK_STREAM, IPPROTO_IP);
-    #endif
+#endif
     struct sockaddr_in serveraddr;
     std::memset(&serveraddr, 0, sizeof serveraddr);
     serveraddr.sin_addr.s_addr = inet_addr(addr.c_str());
@@ -40,6 +40,8 @@ void Client::start() {
     on_connect(serveraddr);
 
     std::thread([&] {
+        detmtx.lock();
+
         while (running) {
             sockmtx.lock();
             char *tres = (char *)calloc(1, sizeof(char));
@@ -81,6 +83,7 @@ void Client::start() {
         }
         on_close();
         running = false;
+        detmtx.unlock();
     }).detach();
 }
 void Client::stop() {
@@ -89,6 +92,8 @@ void Client::stop() {
     }
     running = false;
     ::closesocketfd(socketfd);
+    detmtx.lock();
+    detmtx.unlock();
 }
 Response Client::send(const RequestCode req_c, const void *data, size_t len) {
     if (!running) {

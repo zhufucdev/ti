@@ -1,3 +1,4 @@
+#include <helper.h>
 #include <log.h>
 #include <thread>
 #include <ti_client.h>
@@ -60,7 +61,7 @@ bool TiClient::reconnect(const std::string &new_token) {
     default:
         panic_unknown_res("reconnect", res.code);
     }
-    userid = res.buff;
+    userid = std::string(res.buff);
     state = READY;
     if (!sync()) {
         logD("[client] warning: sync failed at reconnection");
@@ -70,7 +71,51 @@ bool TiClient::reconnect(const std::string &new_token) {
 
 bool TiClient::sync() {
     panic_if_not(READY);
+    std::string query = userid;
+    auto res = Client::send(RequestCode::SYNC, token, query);
+    auto user = User::deserialize(res.buff, res.len);
+    add_entity(user);
+    delete res.buff;
 
+    query = "contacts/hash";
+    res = Client::send(RequestCode::SYNC, token, query);
+    auto local_sync = get_sync(user);
+    if (std::memcmp(res.buff, local_sync.get_contacts_hash()->hash, res.len) !=
+        0) {
+        delete res.buff;
+        query = "contacts/id";
+        res = Client::send(RequestCode::SYNC, token, query);
+        auto remote_id = ti::helper::read_message_body(res.buff, res.len);
+        auto contacts = get_contacts();
+        auto local_id = ti::helper::get_ids(contacts.begin(), contacts.end());
+        ti::helper::Diff<std::string> diff(remote_id.begin(), remote_id.end(),
+                                           local_id.begin(), local_id.end());
+        for (const auto &eid : diff.plus) {
+            add_contact(user, get_entity_or_download(eid));
+        }
+        for (const auto &eid : diff.minus) {
+            delete_contact(user, get_entity(eid));
+        }
+    }
+    delete res.buff;
+
+    query = "messages/hash";
+    res = Client::send(RequestCode::SYNC, token, query);
+    if (std::memcmp(res.buff, local_sync.get_messages_hash()->hash, res.len) !=
+        0) {
+        delete res.buff;
+        query = "messages/id";
+        res = Client::send(RequestCode::SYNC, token, query);
+        auto remote_id = ti::helper::read_message_body(res.buff, res.len);
+        auto messages = get_messages();
+        auto local_id = ti::helper::get_ids(messages.begin(), messages.end());
+        ti::helper::Diff<std::string> diff(remote_id.begin(), remote_id.end(),
+                                           local_id.begin(), local_id.end());
+        for (const auto &eid : diff.plus) {
+            add_message()
+        }
+    }
+    delete res.buff;
     return true;
 }
 
@@ -142,8 +187,49 @@ bool TiClient::user_delete() {
 }
 TiClientState TiClient::get_state() { return state; }
 User *TiClient::get_current_user() const { return get_user(userid); }
-std::vector<Entity *> TiClient::get_contacts() const {}
-void TiClient::send(ti::Message *message) {}
+Entity *TiClient::get_entity_or_download(const std::string &id) {
+    auto e = TiOrm::get_entity(id);
+    if (e != nullptr) {
+        return e;
+    }
+    auto res = Client::send(RequestCode::SYNC, token, id);
+    switch (res.code) {
+    case ResponseCode::NOT_FOUND:
+        return nullptr;
+    case ResponseCode::OK:
+        break;
+    default:
+        panic_unknown_res("get_entity_or_download", res.code);
+    }
+
+    e = Entity::deserialize(
+        res.buff, res.len, [&](auto id) { return get_entity_or_download(id); });
+    add_entity(e);
+    return e;
+}
+Message *TiClient::get_message_or_download(const std::string &id) {
+    auto m = get_message(id);
+    if (m != nullptr) {
+        return m;
+    }
+    auto res = Client::send(RequestCode::SYNC, token, id);
+    switch (res.code) {
+    case ResponseCode::NOT_FOUND:
+        return nullptr;
+    case ResponseCode::OK:
+        break;
+    default:
+        panic_unknown_res("get_message_or_download", res.code);
+    }
+
+}
+std::vector<Entity *> TiClient::get_contacts() const {
+    return TiOrm::get_contacts(get_current_user());
+}
+void TiClient::send(ti::Message *message) {
+    // TODO
+    throw std::runtime_error("not implemented");
+}
 
 void TiClient::panic_if_not(ti::client::TiClientState target) {
     if (state < target) {

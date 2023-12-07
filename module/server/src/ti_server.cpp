@@ -1,9 +1,8 @@
 #include "ti_server.h"
 #include <argon2.h>
+#include <helper.h>
 #include <log.h>
 #include <nanoid.h>
-#include <ranges>
-#include <helper.h>
 
 #define PASSWORD_HASH_BYTES 64
 #define PASSWORD_HASH_SALT "DIuL4dPTcL3q1a7EFOF9f"
@@ -86,7 +85,7 @@ User *ServerOrm::check_token(const std::string &token) const {
 }
 void ServerOrm::add_token(User *owner, const std::string &token) {
     tokens.emplace_back(owner, token);
-    auto t = prepare("INSERT INTO \"token\"(user_id, token)  VALUES (?, ?)");
+    auto t = prepare("INSERT INTO \"token\"(user_id, token) VALUES (?, ?)");
     t->bind_text(0, owner->get_id());
     t->bind_text(1, token);
     t->begin();
@@ -254,21 +253,21 @@ size_t memappend(char **src, size_t src_count, size_t *src_len, char *dest) {
 
 #pragma clang diagnostic push
 #pragma ide diagnostic ignored "NullDereference"
-size_t write_sync_response(char **buf, std::vector<Entity *> *entities,
+size_t write_sync_response(char **buf, std::vector<Entity *> *contacts,
                            std::vector<Frame *> *frames,
                            std::vector<Message *> *messages) {
     int frames_mask = frames != nullptr ? 1 : 0,
         messages_mask = messages != nullptr ? 1 : 0,
-        entities_mask = entities != nullptr ? 1 : 0;
+        contacts_mask = contacts != nullptr ? 1 : 0;
     char *frame_bufs[frames_mask * frames->size()],
         *msg_bufs[messages_mask * messages->size()],
-        *entity_bufs[entities_mask * entities->size()];
+        *entity_bufs[contacts_mask * contacts->size()];
     size_t frame_lens[frames_mask * frames->size()],
         msg_lens[messages_mask * messages->size()],
-        entity_lens[entities_mask * entities->size()];
+        entity_lens[contacts_mask * contacts->size()];
     size_t sending_len = 0;
-    for (int i = 0; i < entities_mask * entities->size(); i++) {
-        entity_lens[i] = (*entities)[i]->serialize(&entity_bufs[i]);
+    for (int i = 0; i < contacts_mask * contacts->size(); i++) {
+        entity_lens[i] = (*contacts)[i]->serialize(&entity_bufs[i]);
         sending_len += entity_lens[i];
     }
     for (int i = 0; i < frames_mask * frames->size(); i++) {
@@ -282,15 +281,15 @@ size_t write_sync_response(char **buf, std::vector<Entity *> *entities,
 
     char *sending_buf = (char *)calloc(
         sending_len +
-            (entities_mask + frames_mask + messages_mask) * BYTES_LEN_HEADER,
+            (contacts_mask + frames_mask + messages_mask) * BYTES_LEN_HEADER,
         sizeof(char));
     sending_len = 0;
-    if (entities_mask) {
-        auto len_header = ti::helper::write_len_header(entities->size());
+    if (contacts_mask) {
+        auto len_header = ti::helper::write_len_header(contacts->size());
         std::memcpy(sending_buf, len_header, BYTES_LEN_HEADER);
         sending_len += BYTES_LEN_HEADER;
         sending_len +=
-            memappend(entity_bufs, entities->size(), entity_lens, sending_buf);
+            memappend(entity_bufs, contacts->size(), entity_lens, sending_buf);
         delete len_header;
     }
     if (frames_mask) {
@@ -345,8 +344,8 @@ void TiClient::sync(const std::string &curr_token,
     if (curr_token != token || user == nullptr) {
         send(ResponseCode::TOKEN_EXPIRED);
     } else {
-        auto paths =
-            ti::helper::read_message_body(selector.c_str(), selector.length(), '/');
+        auto paths = ti::helper::read_message_body(selector.c_str(),
+                                                   selector.length(), '/');
         if (paths[0] == "*") {
             auto contacts = db.get_contacts(user);
             std::vector<Frame *> frames;
@@ -363,19 +362,45 @@ void TiClient::sync(const std::string &curr_token,
                 write_sync_response(&buf, &contacts, &frames, &messages);
             send(ResponseCode::OK, buf, len);
             delete buf;
-        } else if (paths[0] == "mbf") {
+        } else if (paths[0] == "messages") {
             if (paths.size() < 2 || paths[1] == "*") {
                 auto messages = db.get_messages(user);
                 char *buf;
-                auto len = write_sync_response(&buf, nullptr, nullptr, &messages);
+                auto len =
+                    write_sync_response(&buf, nullptr, nullptr, &messages);
                 send(ResponseCode::OK, (void *)buf, len);
                 delete buf;
             } else if (paths[1] == "id") {
                 auto messages = db.get_messages(user);
                 char *buf;
-                auto len = write_entity_id(messages.begin(), messages.end(), &buf);
+                auto len =
+                    write_entity_id(messages.begin(), messages.end(), &buf);
                 send(ResponseCode::OK, (void *)buf, len);
                 delete buf;
+            } else if (paths[1] == "hash") {
+                auto sync = db.get_sync(user);
+                auto hash = sync.get_messages_hash();
+                send(ResponseCode::OK, hash->hash, hash->len);
+            }
+        } else if (paths[0] == "contacts") {
+            if (paths.size() < 2 || paths[1] == "*") {
+                auto contacts = db.get_contacts(user);
+                char *buf;
+                auto len =
+                    write_sync_response(&buf, &contacts, nullptr, nullptr);
+                send(ResponseCode::OK, (void *)buf, len);
+                delete buf;
+            } else if (paths[1] == "id") {
+                auto contacts = db.get_contacts(user);
+                char *buf;
+                auto len =
+                    write_entity_id(contacts.begin(), contacts.end(), &buf);
+                send(ResponseCode::OK, (void *)buf, len);
+                delete buf;
+            } else if (paths[1] == "hash") {
+                auto sync = db.get_sync(user);
+                auto hash = sync.get_contacts_hash();
+                send(ResponseCode::OK, hash->hash, hash->len);
             }
         } else if (Entity *entity = db.get_entity(paths[0])) {
             if (paths.size() < 2 || paths[1] == "*") {

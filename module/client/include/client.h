@@ -5,9 +5,9 @@
 namespace ti {
 namespace client {
 struct Response {
-    const char *buff;
-    const size_t len;
-    const ResponseCode code;
+    char *buff;
+    size_t len;
+    ResponseCode code;
 };
 
 template <typename T> size_t req_len(const T &str) { return str.length() + 1; }
@@ -32,7 +32,7 @@ class Client {
     short port;
     SocketFd socketfd;
     bool running;
-    std::mutex sockmtx, resmtx;
+    std::mutex sockmtx, resmtx, detmtx;
     std::queue<Response> res_queue;
 
   public:

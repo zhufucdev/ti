@@ -21,7 +21,33 @@ InputIterator get_entity_in(InputIterator first, InputIterator last,
     }
     return last;
 }
+template <class EntityIterator>
+inline std::vector<std::string> get_ids(EntityIterator first, EntityIterator last) {
+    std::vector<std::string> result;
+    std::transform(first, last, std::back_inserter(result),
+                   [&](auto e) { return e->get_id(); });
+    return result;
+}
 size_t next_sync_hash(char *curr, size_t curr_len, const std::string &addition,
                       char **dst);
+template <class T, typename Iterator = typename std::vector<T>::iterator>
+class Diff {
+  public:
+    std::vector<T> plus, minus;
+    Diff(Iterator a_first, Iterator a_last, Iterator b_first, Iterator b_last)
+        : plus(), minus() {
+        Iterator ai, bi;
+        for (ai = a_first; ai != a_last; ai++) {
+            if (std::find(b_first, b_last, *ai) == b_last) {
+                plus.push_back(*ai);
+            }
+        }
+        for (bi = b_first; bi != b_last; bi++) {
+            if (std::find(a_first, a_last, *bi) == a_last) {
+                minus.push_back(*bi);
+            }
+        }
+    }
+};
 } // namespace helper
 } // namespace ti

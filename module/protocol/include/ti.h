@@ -101,6 +101,7 @@ class Message : public BinarySerializable {
     Entity *get_forward_source() const;
     std::time_t get_time() const;
     bool is_visible_by(const Entity *entity);
+    std::vector<User *> get_all_receivers();
     size_t serialize(char **dst) const override;
     static Message *deserialize(char *src, size_t len,
                                 const std::vector<Frame *> &frames,
@@ -213,6 +214,7 @@ class TiOrm : public SqlDatabase {
     std::vector<std::pair<User *, Entity *>> contacts;
 
     void reset();
+    void update_sync(const User *owner, const std::string& addition, std::string field);
 
   public:
     explicit TiOrm(const std::string &dbfile);
@@ -223,6 +225,7 @@ class TiOrm : public SqlDatabase {
     User *get_user(const std::string &id) const;
     std::vector<Entity *> get_contacts(User *owner) const;
     void add_contact(User *owner, Entity *contact);
+    bool delete_contact(User *owner, Entity *contact);
     /**
      * Insert a new entity, or replace the existing one,
      * making whose pointer invalid
@@ -236,6 +239,7 @@ class TiOrm : public SqlDatabase {
     std::vector<Message *> get_messages() const;
     Message *get_message(const std::string &id);
     void add_message(Message *msg);
+    bool delete_message(Message *msg);
     Sync get_sync(ti::User *owner) const;
 };
 } // namespace orm
